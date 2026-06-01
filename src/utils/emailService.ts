@@ -11,7 +11,7 @@ if (!apiKey) {
 const resend = new Resend(apiKey);
 
 export const sendOTP = async (email: string, otp: string, purpose: string) => {
-  const subject = purpose === 'signup' ? 'PlusOne Signup OTP' : 'PlusOne Forgot Password OTP';
+  const subject = purpose === 'signup' ? 'Poster Signup OTP' : 'Poster Forgot Password OTP';
   const html = `<p>Your OTP for ${purpose} is: <b>${otp}</b>. It expires in 10 minutes.</p>`;
 
   const result = await resend.emails.send({
