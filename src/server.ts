@@ -14,7 +14,13 @@ import { requestIdMiddleware } from './middlewares/requestId.middleware'
 import { errorHandler } from './middlewares/error.middleware'
 import cron from 'node-cron';
 import { supabase } from './config/supabase';
+import profileRoutes from './routes/profile.routes';
+import searchRoutes from './routes/search.routes';
+import socialPostRoutes from './routes/socialPost.routes';
+import notificationRoutes from './routes/notification.routes';
+import { initFirebase } from './utils/notifications';
 
+initFirebase();
 dotenv.config()
 
 
@@ -64,6 +70,10 @@ app.use('/api/posts', postRoutes)
 app.use('/api/plans', planRoutes)
 app.use('/api/products', productRoutes)
 app.use('/invite', inviteRoutes)
+app.use('/api/social-posts', socialPostRoutes);
+app.use('/api/profile', profileRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Error handling middleware (should be last)
 app.use(errorHandler)
@@ -118,6 +128,20 @@ cron.schedule('0 2 * * *', async () => {
   } catch (err) {
     console.error('Cleanup failed:', err);
   }
+});
+
+// हर रात 12:00 बजे streak reset करें (जिन्होंने कल पोस्ट नहीं की)
+cron.schedule('0 0 * * *', async () => {
+  console.log('Running streak reset...');
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+  const { error } = await supabase
+    .from('users')
+    .update({ streak: 0 })
+    .lt('last_post_date', yesterdayStr);
+  if (error) console.error('Streak reset error:', error);
+  else console.log('Streak reset completed');
 });
 
 
