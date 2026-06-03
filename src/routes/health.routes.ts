@@ -1,12 +1,12 @@
 import express from 'express'
-import { supabase } from '../config/supabase'
+import { supabaseAdmin } from '../config/supabase'
 
 const router = express.Router()
 
 router.get('/health', async (req, res) => {
   try {
     // Check database connection
-    const { error } = await supabase.from('users').select('count', { count: 'exact', head: true })
+    const { error } = await supabaseAdmin.from('users').select('count', { count: 'exact', head: true })
     
     if (error) {
       return res.status(503).json({ 
