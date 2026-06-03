@@ -6,7 +6,8 @@ import {
   addComment,
   getComments,
   editPost,
-  deletePost
+  deletePost,
+  getUserPosts
 } from '../controllers/socialPost.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { uploadPostMedia } from '../middlewares/upload.middleware';
@@ -21,6 +22,7 @@ router.use(requireActiveSubscription);
 
 router.post('/', uploadPostMedia, createPost);
 router.get('/feed', getFeed);
+router.get('/user/:userId', getUserPosts);
 router.post('/:id/like', toggleLike);
 router.post('/:id/comment', addComment);
 router.get('/:id/comments', getComments);
