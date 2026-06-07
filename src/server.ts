@@ -13,12 +13,13 @@ import { apiRateLimiter } from './middlewares/rateLimit.middleware';
 import { requestIdMiddleware } from './middlewares/requestId.middleware'
 import { errorHandler } from './middlewares/error.middleware'
 import cron from 'node-cron';
-import { supabase } from './config/supabase';
+import { supabase, supabaseAdmin } from './config/supabase';
 import profileRoutes from './routes/profile.routes';
 import searchRoutes from './routes/search.routes';
 import socialPostRoutes from './routes/socialPost.routes';
 import notificationRoutes from './routes/notification.routes';
 import { initFirebase } from './utils/notifications';
+import { sendPushNotification } from './utils/notifications';
 
 initFirebase();
 dotenv.config()
@@ -142,6 +143,46 @@ cron.schedule('0 0 * * *', async () => {
     .lt('last_post_date', yesterdayStr);
   if (error) console.error('Streak reset error:', error);
   else console.log('Streak reset completed');
+});
+
+// Subscription expiry / inactivity reminder (daily at 9:00 AM)
+cron.schedule('0 9 * * *', async () => {
+  console.log('Running subscription reminder check...');
+  try {
+    // Users who are either:
+    // 1) not subscribed (subscription_status = false) AND (expiry passed OR last_post_date older than 4 days)
+    // 2) reminder_sent = false
+    const { data: users, error } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('is_deleted', false)
+      .eq('reminder_sent', false)
+      .or(`subscription_status.eq.false,and(subscription_expiry.lt.${new Date().toISOString()}),and(last_post_date.lt.${new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString()},subscription_status.eq.false)`);
+
+    if (error) {
+      console.error('Reminder fetch error:', error);
+      return;
+    }
+
+    if (!users || users.length === 0) {
+      console.log('No users need reminder today.');
+      return;
+    }
+
+    console.log(`Sending reminder to ${users.length} users...`);
+    for (const user of users) {
+      await sendPushNotification(
+        user.id,
+        '⏰ Subscription Needed',
+        'Your subscription has expired or you have been inactive. Subscribe now to continue enjoying Poster!'
+      );
+      // Mark reminder as sent
+      await supabaseAdmin.from('users').update({ reminder_sent: true }).eq('id', user.id);
+    }
+    console.log('Reminder notifications sent.');
+  } catch (err) {
+    console.error('Reminder cron error:', err);
+  }
 });
 
 

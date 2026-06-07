@@ -6,6 +6,7 @@ import { sendOTP } from '../utils/emailService'
 import { OtpPurpose } from '../types/enums'
 import { successResponse, errorResponse } from '../utils/response'
 import logger from '../utils/logger'
+import { sendPushNotification } from '../utils/notifications'
 
 
 export const verifyOtp = async (req: Request, res: Response) => {
@@ -145,6 +146,8 @@ export const signup = async (req: Request, res: Response) => {
 
     // 9. Clean up email verification
     await supabaseAdmin.from('email_verifications').delete().eq('email', email);
+
+    await sendPushNotification(userId, 'Welcome to Poster! 🎉', 'Thank you for joining. Start sharing and earning!');
 
     successResponse(res, { message: 'User created successfully', userId });
   } catch (err) {
