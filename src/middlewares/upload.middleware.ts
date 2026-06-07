@@ -31,11 +31,14 @@ const upload = multer({
 
 // ✅ यहाँ हम एक middleware फ़ंक्शन बनाते हैं जो error को हैंडल करता है
 export const uploadPostMedia = (req: Request, res: Response, next: NextFunction) => {
+  console.log('➡️ uploadPostMedia called');
   upload.single('media')(req, res, (err) => {
     if (err) {
-      console.error('Multer error:', err);
+      console.error('❌ Multer error:', err);
       return res.status(400).json({ message: err.message });
     }
+    console.log('✅ File received:', req.file);
+    console.log('✅ Body:', req.body);
     next();
   });
 };
