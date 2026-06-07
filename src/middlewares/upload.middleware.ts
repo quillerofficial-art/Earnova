@@ -1,5 +1,6 @@
 import multer from 'multer';
 import path from 'path';
+import { Request, Response, NextFunction } from 'express';
 
 const storage = multer.memoryStorage();
 
@@ -28,6 +29,17 @@ const upload = multer({
   fileFilter,
 });
 
+// ✅ यहाँ हम एक middleware फ़ंक्शन बनाते हैं जो error को हैंडल करता है
+export const uploadPostMedia = (req: Request, res: Response, next: NextFunction) => {
+  upload.single('media')(req, res, (err) => {
+    if (err) {
+      console.error('Multer error:', err);
+      return res.status(400).json({ message: err.message });
+    }
+    next();
+  });
+};
+
+// अन्य exports (यदि आपके पास पहले से हैं)
 export const uploadSingle = upload.single('profilePic');
 export const uploadProductImage = upload.single('image');
-export const uploadPostMedia = upload.single('media'); // नया

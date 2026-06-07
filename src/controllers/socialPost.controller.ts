@@ -6,7 +6,8 @@ import { sendPushNotification } from '../utils/notifications';
 import logger from '../utils/logger';
 
 export const createPost = async (req: Request, res: Response) => {
-  const { title, description, link } = req.body;
+  // 🛡️ req.body को safe default दें
+  const { title, description, link } = req.body || {};
   const mediaFile = req.file;
   
   if (!mediaFile) {
