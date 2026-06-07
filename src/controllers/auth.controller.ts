@@ -10,8 +10,10 @@ import logger from '../utils/logger'
 
 export const verifyOtp = async (req: Request, res: Response) => {
   const { email, otp, purpose } = req.body;
-  const isValid = await verifyOTP(email, otp, purpose);
+  const otpString = String(otp);  // ensure string
+  const isValid = await verifyOTP(email, otpString, purpose);
   if (!isValid) return errorResponse(res, 'Invalid or expired OTP');
+
 
   // Mark email as verified for 15 minutes
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
@@ -171,9 +173,10 @@ export const login = async (req: Request, res: Response) => {
     if (error) {
       return res.status(401).json({ message: error.message })
     }
+    
 
     // Fetch user profile from public.users
-    const { data: userProfile, error: profileError } = await supabase
+    const { data: userProfile, error: profileError } = await supabaseAdmin
       .from('users')
       .select('*')
       .eq('id', data.user.id)

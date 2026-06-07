@@ -1,12 +1,12 @@
 import { Request, Response } from 'express';
-import { supabase } from '../config/supabase';
+import { supabase, supabaseAdmin } from '../config/supabase';
 import { successResponse, errorResponse } from '../utils/response';
 import logger from '../utils/logger';
 
 export const getMyProfile = async (req: Request, res: Response) => {
   const userId = req.user!.id;
   try {
-    const { data: user, error } = await supabase
+    const { data: user, error } = await supabaseAdmin
       .from('users')
       .select('id, name, email, mobile_number, profile_pic_url, referral_code, level, total_downline, subscription_status, bio, social_links, streak, last_post_date')
       .eq('id', userId)

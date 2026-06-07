@@ -18,6 +18,8 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
     return res.status(401).json({ message: 'Invalid or expired token' })
   }
 
+  // ✅ Token को request में attach करें (बाद में use करने के लिए)
   req.user = { id: user.id, email: user.email! }
+  req.token = token
   next()
 }
