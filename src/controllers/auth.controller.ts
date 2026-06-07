@@ -147,7 +147,7 @@ export const signup = async (req: Request, res: Response) => {
     // 9. Clean up email verification
     await supabaseAdmin.from('email_verifications').delete().eq('email', email);
 
-    await sendPushNotification(userId, 'Welcome to Poster! 🎉', 'Thank you for joining. Start sharing and earning!');
+    await sendPushNotification(userId, 'Welcome to Poster! 🎉', 'Refer 5 friends within your first 7 days, complete Level 1, and unlock a free lifetime subscription', 'Poster मध्ये आपले स्वागत आहे! 🎉 पहिल्या ७ दिवसांत ५ मित्रांना रेफर करा, लेव्हल १ पूर्ण करा आणि मिळवा आयुष्यभरासाठी फ्री सबस्क्रिप्शन!');
 
     successResponse(res, { message: 'User created successfully', userId });
   } catch (err) {
