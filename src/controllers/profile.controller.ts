@@ -3,7 +3,6 @@ import { createClient } from '@supabase/supabase-js';
 import { successResponse, errorResponse } from '../utils/response';
 import logger from '../utils/logger';
 
-// Helper to get authenticated supabase client
 const getAuthSupabase = (token: string) => {
   return createClient(
     process.env.SUPABASE_URL!,
