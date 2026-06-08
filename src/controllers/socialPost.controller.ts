@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase';
 import { uploadToBackblaze } from '../utils/s3Upload';
 import { successResponse, errorResponse } from '../utils/response';
 import { sendPushNotification } from '../utils/notifications';
+import { createClient } from '@supabase/supabase-js';
 import logger from '../utils/logger';
 
 export const createPost = async (req: Request, res: Response) => {
@@ -110,14 +111,27 @@ export const toggleLike = async (req: Request, res: Response) => {
   }
 };
 
+
+// Helper function to get authenticated supabase client
+const getAuthSupabase = (token: string) => {
+  return createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_ANON_KEY!,
+    { global: { headers: { Authorization: `Bearer ${token}` } } }
+  );
+};
+
 export const addComment = async (req: Request, res: Response) => {
   const { id: postId } = req.params;
   const { content, parentCommentId } = req.body;
   if (!content) return errorResponse(res, 'Comment content is required');
   const userId = req.user!.id;
+  const token = req.token!;
+  const supabaseAuth = getAuthSupabase(token);
+
   try {
     if (parentCommentId) {
-      const { data: parent } = await supabase
+      const { data: parent } = await supabaseAuth
         .from('comments')
         .select('parent_comment_id')
         .eq('id', parentCommentId)
@@ -126,7 +140,7 @@ export const addComment = async (req: Request, res: Response) => {
         return errorResponse(res, 'Nesting only up to 2 levels allowed');
       }
     }
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAuth
       .from('comments')
       .insert({
         post_id: postId,
@@ -138,16 +152,16 @@ export const addComment = async (req: Request, res: Response) => {
       .single();
     if (error) throw error;
 
-    await supabase.rpc('increment_post_comments', { post_id: postId });
+    await supabaseAuth.rpc('increment_post_comments', { post_id: postId });
 
     // 🚀 Send push notification to post owner (if not self)
-    const { data: post } = await supabase
+    const { data: post } = await supabaseAuth
       .from('posts')
       .select('user_id')
       .eq('id', postId)
       .single();
     if (post && post.user_id !== userId) {
-      const { data: commenter } = await supabase
+      const { data: commenter } = await supabaseAuth
         .from('users')
         .select('name')
         .eq('id', userId)
