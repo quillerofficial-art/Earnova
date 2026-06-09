@@ -147,7 +147,29 @@ export const signup = async (req: Request, res: Response) => {
     // 9. Clean up email verification
     await supabaseAdmin.from('email_verifications').delete().eq('email', email);
 
-    await sendPushNotification(userId, 'Welcome to Poster! 🎉', 'Refer 5 friends within your first 7 days, complete Level 1, and unlock a free lifetime subscription', 'Poster मध्ये आपले स्वागत आहे! 🎉 पहिल्या ७ दिवसांत ५ मित्रांना रेफर करा, लेव्हल १ पूर्ण करा आणि मिळवा आयुष्यभरासाठी फ्री सबस्क्रिप्शन!');
+    // पुरानी लाइन (हटाएँ):
+// await sendPushNotification(userId, 'Welcome to Poster! 🎉', 'Thank you for joining. Start sharing and earning!');
+
+// नई लाइन (डालें):
+await sendPushNotification(userId, '🎉 Welcome to the Poster family!', 
+  `Welcome to the family! 🎉\n\n` +
+  `Poster isn't just another social media app—it's a social communication platform that actually pays you for your daily creativity!\n\n` +
+  `The formula is simple: Post daily, level up, and get paid every month.\n\n` +
+  `💰 Level & Payout Breakdown:\n` +
+  `• Level 1: Lifetime free subscription\n` +
+  `• Level 2: ₹125/month\n` +
+  `• Level 3: ₹600/month\n` +
+  `• Level 4: ₹3,100/month\n` +
+  `• Level 5: ₹15,000/month\n\n` +
+  `🚀 How to Level Up & Unlock Free Subscriptions?\n` +
+  `There are 5 tasks in total. Complete each task to increase your level by 1!\n\n` +
+  `🔹 Your First Mission (Task 1): Unlock Level 1 & Lifetime Free Access\n` +
+  `▸ Goal: Refer 5 friends.\n` +
+  `▸ Condition: They must post their very first post on the app.\n` +
+  `▸ Deadline: Within 7 days of subscribing.\n` +
+  `▸ Reward: Free Lifetime Subscription to Poster!\n\n` +
+  `Ready to turn your posts into payouts? Start sharing and posting today! 🚀`
+);
 
     successResponse(res, { message: 'User created successfully', userId });
   } catch (err) {
