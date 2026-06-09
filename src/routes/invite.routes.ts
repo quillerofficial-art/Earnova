@@ -9,7 +9,7 @@ router.get('/', (req, res) => {
   res.setHeader('Expires', '0');
 
   const token = (req.query.token as string) || '';
-  const apkUrl = process.env.APK_DOWNLOAD_URL || 'https://your-storage.com/poster.apk'; // fallback
+  const apkUrl = process.env.APK_DOWNLOAD_URL || 'https://poster-fl1x.onrender.com/poster.apk'; // fallback
 
   const html = `<!DOCTYPE html>
 <html lang="en">
