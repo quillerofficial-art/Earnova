@@ -9,7 +9,7 @@ export const getMyProfile = async (req: Request, res: Response) => {
   try {
     const { data: user, error } = await supabaseAdmin
       .from('users')
-      .select('id, name, email, mobile_number, profile_pic_url, level, total_downline, subscription_status, bio, social_links, streak, last_post_date')
+      .select('id, name, email, mobile_number, upi_id, profile_pic_url, level, total_downline, subscription_status, bio, social_links, streak, last_post_date')
       .eq('id', userId)
       .single();
     if (error) throw error;
