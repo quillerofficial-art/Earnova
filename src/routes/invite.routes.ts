@@ -3,13 +3,13 @@ import express from 'express';
 const router = express.Router();
 
 router.get('/', (req, res) => {
-  // Disable caching
+  // Disable caching to always show fresh invite code
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, private');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
 
   const token = (req.query.token as string) || '';
-  const apkUrl = process.env.APK_DOWNLOAD_URL || 'https://poster-fl1x.onrender.com/poster.apk'; // fallback
+  const apkUrl = process.env.APK_DOWNLOAD_URL || 'https://poster-fl1x.onrender.com/poster.apk';
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -20,7 +20,6 @@ router.get('/', (req, res) => {
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest"></script>
   <style>
-    /* ... (all styles remain same as your provided design) ... */
     * {
       margin: 0;
       padding: 0;
@@ -132,6 +131,7 @@ router.get('/', (req, res) => {
       font-size: 15px;
       color: #3b82f6;
       letter-spacing: 0.5px;
+      word-break: break-all;
     }
     .download-btn {
       background: linear-gradient(135deg, #ff4757, #ff6b81);
@@ -301,19 +301,13 @@ router.get('/', (req, res) => {
       box-shadow: 0 4px 12px rgba(0,0,0,0.15);
       cursor: pointer;
     }
-    .phone-mock {
-      width: 100%;
-      border-radius: 32px;
-      margin-top: 12px;
-      box-shadow: 0 12px 24px rgba(0,0,0,0.1);
-    }
   </style>
 </head>
 <body>
 <div class="phone-container">
   <div class="header">
     <div class="logo">
-      <img src="/images/logo.png" alt="Poster logo">   <!-- ✅ public folder से -->
+      <img src="/images/logo.png" alt="Poster logo" onerror="this.src='https://res.cloudinary.com/dfej3kvsl/image/upload/v1777007968/IMG_20260410_225650_hnd2d9.png'">
       <span>Poster</span>
     </div>
   </div>
