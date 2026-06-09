@@ -3,13 +3,14 @@ import express from 'express';
 const router = express.Router();
 
 router.get('/', (req, res) => {
-  // Disable caching to always show fresh invite code
+  // Disable caching
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, private');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
 
   const token = (req.query.token as string) || '';
-  const apkUrl = process.env.APK_DOWNLOAD_URL || 'https://poster-fl1x.onrender.com/poster.apk';
+  // 👇 Direct link to your APK on Render
+  const apkUrl = 'https://poster-fl1x.onrender.com/poster.apk';
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -307,7 +308,7 @@ router.get('/', (req, res) => {
 <div class="phone-container">
   <div class="header">
     <div class="logo">
-      <img src="/images/logo.png" alt="Poster logo" onerror="this.src='https://res.cloudinary.com/dfej3kvsl/image/upload/v1777007968/IMG_20260410_225650_hnd2d9.png'">
+      <img src="/images/logo.jpeg" alt="Poster logo">   <!-- ✅ Correct path -->
       <span>Poster</span>
     </div>
   </div>
