@@ -7,7 +7,6 @@ import { createClient } from '@supabase/supabase-js';
 import logger from '../utils/logger';
 
 export const createPost = async (req: Request, res: Response) => {
-  // 🛡️ req.body को safe default दें
   const { title, description, link } = req.body || {};
   const mediaFile = req.file;
   
@@ -20,13 +19,14 @@ export const createPost = async (req: Request, res: Response) => {
     const folder = mediaType === 'video' ? 'posts/videos' : 'posts/images';
     const mediaUrl = await uploadToBackblaze(mediaFile, folder);
 
+    // 1. Post बनाएँ
     const { data, error } = await supabase
       .from('posts')
       .insert({
         user_id: req.user!.id,
         title: title || null,
         description: description || null,
-        link: link || null,          // ✅ नया link फ़ील्ड
+        link: link || null,
         media_url: mediaUrl,
         media_type: mediaType,
       })
@@ -35,10 +35,36 @@ export const createPost = async (req: Request, res: Response) => {
 
     if (error) throw error;
 
-    // Update last_post_date for streak
+    // 2. यूजर की वर्तमान last_post_date और streak प्राप्त करें
+    const { data: userData } = await supabase
+      .from('users')
+      .select('last_post_date, streak')
+      .eq('id', req.user!.id)
+      .single();
+
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    let newStreak = userData?.streak || 0;
+
+    if (userData?.last_post_date === yesterdayStr) {
+      // कल पोस्ट की थी → स्ट्रीक बढ़ाएँ
+      newStreak += 1;
+    } else if (userData?.last_post_date !== today) {
+      // आज पहली पोस्ट (न तो आज और न ही कल पोस्ट की) → स्ट्रीक = 1
+      newStreak = 1;
+    }
+    // यदि last_post_date === today (पहले ही आज पोस्ट कर चुका है) → स्ट्रीक न बदलें
+
+    // 3. last_post_date और नई streak अपडेट करें
     await supabase
       .from('users')
-      .update({ last_post_date: new Date().toISOString().split('T')[0] })
+      .update({
+        last_post_date: today,
+        streak: newStreak
+      })
       .eq('id', req.user!.id);
 
     successResponse(res, { message: 'Post created', post: data });

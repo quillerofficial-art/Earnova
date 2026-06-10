@@ -133,16 +133,17 @@ cron.schedule('0 2 * * *', async () => {
 
 // हर रात 12:00 बजे streak reset करें (जिन्होंने कल पोस्ट नहीं की)
 cron.schedule('0 0 * * *', async () => {
-  console.log('Running streak reset...');
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split('T')[0];
+  console.log('Running streak reset for users who did not post today...');
+  const today = new Date().toISOString().split('T')[0];
   const { error } = await supabase
     .from('users')
     .update({ streak: 0 })
-    .lt('last_post_date', yesterdayStr);
-  if (error) console.error('Streak reset error:', error);
-  else console.log('Streak reset completed');
+    .neq('last_post_date', today);  // जिनकी last_post_date आज नहीं है
+  if (error) {
+    console.error('Streak reset error:', error);
+  } else {
+    console.log('Streak reset completed');
+  }
 });
 
 // Subscription expiry / inactivity reminder (daily at 9:00 AM)
