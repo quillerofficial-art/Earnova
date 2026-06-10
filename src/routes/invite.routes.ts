@@ -9,8 +9,7 @@ router.get('/', (req, res) => {
   res.setHeader('Expires', '0');
 
   const token = (req.query.token as string) || '';
-  // 👇 Direct link to your APK on Render
-  const apkUrl = 'https://poster-fl1x.onrender.com/poster.apk';
+  const apkUrl = 'https://poster-fl1x.onrender.com/poster.apk'; // Direct APK URL
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -134,7 +133,11 @@ router.get('/', (req, res) => {
       letter-spacing: 0.5px;
       word-break: break-all;
     }
-    .download-btn {
+    .download-btn, .sticky-download-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
       background: linear-gradient(135deg, #ff4757, #ff6b81);
       width: 100%;
       border: none;
@@ -143,16 +146,12 @@ router.get('/', (req, res) => {
       color: white;
       font-weight: 800;
       font-size: 16px;
-      margin-bottom: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      box-shadow: 0 8px 20px rgba(255,71,87,0.25);
+      text-decoration: none;
       cursor: pointer;
       transition: 0.2s;
+      box-shadow: 0 8px 20px rgba(255,71,87,0.25);
     }
-    .download-btn:hover {
+    .download-btn:hover, .sticky-download-btn:hover {
       transform: scale(0.98);
       background: linear-gradient(135deg, #e04352, #ff5a6e);
     }
@@ -286,21 +285,10 @@ router.get('/', (req, res) => {
       background: transparent;
       z-index: 999;
     }
-    .sticky-download button {
+    .sticky-download-btn {
       width: 100%;
       padding: 14px;
-      border-radius: 60px;
-      border: none;
-      background: linear-gradient(135deg, #ff4757, #ff6b81);
-      color: white;
       font-size: 16px;
-      font-weight: 800;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      cursor: pointer;
     }
   </style>
 </head>
@@ -308,7 +296,7 @@ router.get('/', (req, res) => {
 <div class="phone-container">
   <div class="header">
     <div class="logo">
-      <img src="/images/logo.jpeg" alt="Poster logo">   <!-- ✅ Correct path -->
+      <img src="/images/logo.jpeg" alt="Poster logo">
       <span>Poster</span>
     </div>
   </div>
@@ -323,7 +311,9 @@ router.get('/', (req, res) => {
       <span class="ref-code" id="referralCode">${token}</span>
     </div>
     
-    <button class="download-btn" id="downloadMainBtn"><i data-lucide="download"></i> Get Poster App</button>
+    <a href="${apkUrl}" download class="download-btn" id="downloadMainLink">
+      <i data-lucide="download"></i> Get Poster App
+    </a>
     
     <div class="stats">
       <div class="stat-item"><div class="stat-number">500K+</div><div class="stat-label">Active Users</div></div>
@@ -374,7 +364,9 @@ router.get('/', (req, res) => {
 </div>
 
 <div class="sticky-download">
-  <button id="bottomDownloadBtn"><i data-lucide="download"></i> Get Poster for Android</button>
+  <a href="${apkUrl}" download class="sticky-download-btn" id="bottomDownloadLink">
+    <i data-lucide="download"></i> Get Poster for Android
+  </a>
 </div>
 
 <script>
@@ -389,12 +381,6 @@ router.get('/', (req, res) => {
       setTimeout(() => refCodeSpan.innerText = original, 1500);
     });
   }
-
-  const APK_URL = "${apkUrl}";
-  function handleDownload() { window.location.href = APK_URL; }
-  
-  document.getElementById("downloadMainBtn")?.addEventListener("click", handleDownload);
-  document.getElementById("bottomDownloadBtn")?.addEventListener("click", handleDownload);
 </script>
 </body>
 </html>`;
