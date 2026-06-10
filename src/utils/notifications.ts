@@ -17,27 +17,33 @@ export const initFirebase = () => {
 
 export const sendPushNotification = async (userId: string, title: string, body: string, data?: any) => {
   if (!initialized) {
-    console.warn('Firebase not initialized, cannot send push');
+    console.warn('⚠️ Firebase not initialized, cannot send push');
     return;
   }
-  // Fetch user's FCM tokens
+  console.log(`🔔 Attempting to send push to user ${userId}: title="${title}"`);
   const { data: devices, error } = await supabase
     .from('user_devices')
     .select('fcm_token')
     .eq('user_id', userId);
-  if (error || !devices || devices.length === 0) return;
-
-  const messages = devices.map(device => ({
-    token: device.fcm_token,
-    notification: { title, body },
-    data: data || {},
-  }));
-
-  for (const msg of messages) {
+  if (error) {
+    console.error('❌ Error fetching devices:', error);
+    return;
+  }
+  if (!devices || devices.length === 0) {
+    console.log(`ℹ️ No devices registered for user ${userId}`);
+    return;
+  }
+  console.log(`📱 Found ${devices.length} devices for user ${userId}`);
+  for (const device of devices) {
     try {
-      await admin.messaging().send(msg);
+      await admin.messaging().send({
+        token: device.fcm_token,
+        notification: { title, body },
+        data: data || {},
+      });
+      console.log(`✅ Push sent to token: ${device.fcm_token.substring(0, 10)}...`);
     } catch (err) {
-      console.error('Failed to send push to device:', err);
+      console.error('❌ Failed to send push:', err);
     }
   }
 };
