@@ -1,5 +1,5 @@
 import { Request, Response } from 'express'
-import { supabase } from '../config/supabase'
+import { supabase, supabaseAdmin } from '../config/supabase'
 import logger from '../utils/logger'
 import { successResponse, errorResponse } from '../utils/response'
 
@@ -76,7 +76,7 @@ export const updateProfile = async (req: Request, res: Response) => {
 // Get user's notifications
 export const getNotifications = async (req: Request, res: Response) => {
   try {
-    const { data: notifications, error } = await supabase
+    const { data: notifications, error } = await supabaseAdmin
       .from('user_notifications')
       .select(`
         id,
@@ -103,7 +103,7 @@ export const markNotificationRead = async (req: Request, res: Response) => {
   const { id } = req.params
 
   try {
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('user_notifications')
       .update({ is_read: true })
       .eq('id', id)
