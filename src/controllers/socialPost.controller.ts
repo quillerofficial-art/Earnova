@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { supabase } from '../config/supabase';
+import { supabase, supabaseAdmin } from '../config/supabase';
 import { uploadToBackblaze } from '../utils/s3Upload';
 import { successResponse, errorResponse } from '../utils/response';
 import { sendPushNotification } from '../utils/notifications';
@@ -19,10 +19,7 @@ const getAuthSupabase = (token: string) => {
 export const createPost = async (req: Request, res: Response) => {
   const { title, description, link } = req.body || {};
   const mediaFile = req.file;
-  
-  if (!mediaFile) {
-    return errorResponse(res, 'Media (image or video) is required');
-  }
+  if (!mediaFile) return errorResponse(res, 'Media (image or video) is required');
 
   try {
     const mediaType = mediaFile.mimetype.startsWith('video') ? 'video' : 'image';
@@ -31,7 +28,7 @@ export const createPost = async (req: Request, res: Response) => {
 
     const supabaseAuth = getAuthSupabase(req.token!);
 
-    // 1. Post बनाएँ
+    // Post INSERT (प्रमाणित क्लाइंट – RLS ठीक)
     const { data, error } = await supabaseAuth
       .from('posts')
       .insert({
@@ -44,39 +41,30 @@ export const createPost = async (req: Request, res: Response) => {
       })
       .select()
       .single();
-
     if (error) throw error;
 
-    // 2. यूजर की वर्तमान last_post_date और streak प्राप्त करें
-    const { data: userData } = await supabaseAuth
+    // Streak update (supabaseAdmin – RLS बायपास)
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+    const { data: userData } = await supabaseAdmin
       .from('users')
       .select('last_post_date, streak')
       .eq('id', req.user!.id)
       .single();
 
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-
     let newStreak = userData?.streak || 0;
-
-    if (userData?.last_post_date === yesterdayStr) {
-      // कल पोस्ट की थी → स्ट्रीक बढ़ाएँ
+    if (!userData?.last_post_date) {
+      newStreak = 1;
+    } else if (userData.last_post_date === yesterday) {
       newStreak += 1;
-    } else if (userData?.last_post_date !== today) {
-      // आज पहली पोस्ट (न तो आज और न ही कल पोस्ट की) → स्ट्रीक = 1
+    } else if (userData.last_post_date !== today) {
       newStreak = 1;
     }
-    // यदि last_post_date === today (पहले ही आज पोस्ट कर चुका है) → स्ट्रीक न बदलें
 
-    // 3. last_post_date और नई streak अपडेट करें
-    await supabaseAuth
+    await supabaseAdmin
       .from('users')
-      .update({
-        last_post_date: today,
-        streak: newStreak
-      })
+      .update({ last_post_date: today, streak: newStreak })
       .eq('id', req.user!.id);
 
     successResponse(res, { message: 'Post created', post: data });
