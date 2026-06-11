@@ -135,7 +135,7 @@ cron.schedule('0 2 * * *', async () => {
 cron.schedule('0 0 * * *', async () => {
   console.log('Running streak reset for users who did not post today...');
   const today = new Date().toISOString().split('T')[0];
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from('users')
     .update({ streak: 0 })
     .neq('last_post_date', today);  // जिनकी last_post_date आज नहीं है

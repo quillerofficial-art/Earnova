@@ -1,5 +1,5 @@
 import admin from 'firebase-admin';
-import { supabase } from '../config/supabase';
+import { supabase, supabaseAdmin } from '../config/supabase';
 
 let initialized = false;
 
@@ -21,7 +21,7 @@ export const sendPushNotification = async (userId: string, title: string, body: 
     return;
   }
   console.log(`🔔 Attempting to send push to user ${userId}: title="${title}"`);
-  const { data: devices, error } = await supabase
+  const { data: devices, error } = await supabaseAdmin
     .from('user_devices')
     .select('fcm_token')
     .eq('user_id', userId);

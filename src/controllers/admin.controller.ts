@@ -127,7 +127,7 @@ export const sendNotification = async (req: Request, res: Response) => {
   }
   try {
     // Insert into notifications table (as before)
-    const { data: notif, error: notifError } = await supabase
+    const { data: notif, error: notifError } = await supabaseAdmin
       .from('notifications')
       .insert({ admin_id: req.user!.id, title: title || 'Notification', message })
       .select()
@@ -139,7 +139,7 @@ export const sendNotification = async (req: Request, res: Response) => {
       user_id: userId,
       notification_id: notif.id,
     }));
-    const { error: insertError } = await supabase.from('user_notifications').insert(userNotifications);
+    const { error: insertError } = await supabaseAdmin.from('user_notifications').insert(userNotifications);
     if (insertError) throw insertError;
 
     // 🚀 Send push notifications to each user
