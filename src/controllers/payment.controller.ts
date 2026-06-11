@@ -1,6 +1,6 @@
 import { Request, Response } from 'express'
 import Razorpay from 'razorpay'
-import { supabase } from '../config/supabase'
+import { supabase, supabaseAdmin } from '../config/supabase'
 import crypto from 'crypto'
 import logger from '../utils/logger'
 
@@ -18,7 +18,7 @@ export const createSubscription = async (req: Request, res: Response) => {
 
   try {
     // Get plan details
-    const { data: plan, error: planError } = await supabase
+    const { data: plan, error: planError } = await supabaseAdmin
       .from('subscription_plans')
       .select('*')
       .eq('id', planId)
@@ -39,7 +39,7 @@ export const createSubscription = async (req: Request, res: Response) => {
     const order = await razorpay.orders.create(options)
 
     // Save order with plan info
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('payment_transactions')
       .insert({
         user_id: req.user!.id,
@@ -78,7 +78,7 @@ export const verifyPayment = async (req: Request, res: Response) => {
    if (expectedSignature !== razorpay_signature) {
     return res.status(400).json({ message: 'Invalid signature' })
   }  
-  const { data: existingTx } = await supabase
+  const { data: existingTx } = await supabaseAdmin
     .from('payment_transactions')
     .select('status')
     .eq('razorpay_order_id', razorpay_order_id)
@@ -90,7 +90,7 @@ export const verifyPayment = async (req: Request, res: Response) => {
 
   try {
       // Get transaction and plan details
-      const { data: transaction, error: updateError } = await supabase
+      const { data: transaction, error: updateError } = await supabaseAdmin
         .from('payment_transactions')
         .update({
           razorpay_payment_id,
@@ -104,7 +104,7 @@ export const verifyPayment = async (req: Request, res: Response) => {
       if (updateError || !transaction) throw updateError
 
       // Get plan
-      const { data: plan } = await supabase
+      const { data: plan } = await supabaseAdmin
         .from('subscription_plans')
         .select('duration_months')
         .eq('id', transaction.plan_id)
@@ -113,7 +113,7 @@ export const verifyPayment = async (req: Request, res: Response) => {
       const startDate = new Date()
       const endDate = new Date()
       
-      const { data: user } = await supabase
+      const { data: user } = await supabaseAdmin
       .from('users')
       .select('subscription_expiry')
       .eq('id', transaction.user_id)
@@ -129,7 +129,7 @@ export const verifyPayment = async (req: Request, res: Response) => {
       newExpiry.setFullYear(newExpiry.getFullYear() + 1)
     }
 
-    const { error: userError } = await supabase
+    const { error: userError } = await supabaseAdmin
       .from('users')
       .update({
         subscription_status: true,
@@ -139,7 +139,7 @@ export const verifyPayment = async (req: Request, res: Response) => {
 
     if (userError) throw userError
 
-    await supabase
+    await supabaseAdmin
       .from('payment_transactions')
       .update({
         subscription_start: startDate.toISOString(),
@@ -157,7 +157,7 @@ export const verifyPayment = async (req: Request, res: Response) => {
 // Get payment status by order ID
 export const getPaymentStatus = async (req: Request, res: Response) => {
   const { orderId } = req.params;
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('payment_transactions')
     .select('status, razorpay_payment_id')
     .eq('razorpay_order_id', orderId)
@@ -201,7 +201,7 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
 const activateSubscription = async (orderId: string) => {
   // 1. transaction fetch
-  const { data: transaction } = await supabase
+  const { data: transaction } = await supabaseAdmin
     .from('payment_transactions')
     .select('*')
     .eq('razorpay_order_id', orderId)
@@ -210,13 +210,13 @@ const activateSubscription = async (orderId: string) => {
   if (!transaction || transaction.status === 'paid') return;
 
   // 2. mark paid
-  await supabase
+  await supabaseAdmin
     .from('payment_transactions')
     .update({ status: 'paid' })
     .eq('razorpay_order_id', orderId);
 
   // 3. get plan duration
-  const { data: plan } = await supabase
+  const { data: plan } = await supabaseAdmin
     .from('subscription_plans')
     .select('duration_months')
     .eq('id', transaction.plan_id)
@@ -228,7 +228,7 @@ const activateSubscription = async (orderId: string) => {
   endDate.setMonth(endDate.getMonth() + (plan?.duration_months || 1));
 
   // 4. update user (🔥 MOST IMPORTANT)
-  await supabase
+  await supabaseAdmin
     .from('users')
     .update({
       subscription_status: true,
@@ -237,10 +237,10 @@ const activateSubscription = async (orderId: string) => {
     .eq('id', transaction.user_id);
 
   // ✅ ADD THIS LINE – Recalculate downline for this user and all ancestors
-  await supabase.rpc('recalc_user_and_ancestors_v5', { target_id: transaction.user_id });
+  await supabaseAdmin.rpc('recalc_user_and_ancestors_v5', { target_id: transaction.user_id });
 
   // 5. save subscription dates
-  await supabase
+  await supabaseAdmin
     .from('payment_transactions')
     .update({
       subscription_start: startDate.toISOString(),
