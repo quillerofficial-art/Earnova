@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { supabase } from '../config/supabase';
+import { supabaseAdmin } from '../config/supabase';
 import { successResponse, errorResponse } from '../utils/response';
 import logger from '../utils/logger';
 
@@ -8,7 +8,7 @@ export const registerDevice = async (req: Request, res: Response) => {
   if (!fcm_token) return errorResponse(res, 'FCM token is required');
 
   try {
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('user_devices')
       .upsert({
         user_id: req.user!.id,
