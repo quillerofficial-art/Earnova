@@ -29,8 +29,10 @@ export const createPost = async (req: Request, res: Response) => {
     const folder = mediaType === 'video' ? 'posts/videos' : 'posts/images';
     const mediaUrl = await uploadToBackblaze(mediaFile, folder);
 
+    const supabaseAuth = getAuthSupabase(req.token!);
+
     // 1. Post बनाएँ
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAuth
       .from('posts')
       .insert({
         user_id: req.user!.id,
@@ -44,8 +46,6 @@ export const createPost = async (req: Request, res: Response) => {
       .single();
 
     if (error) throw error;
-
-    const supabaseAuth = getAuthSupabase(req.token!);
 
     // 2. यूजर की वर्तमान last_post_date और streak प्राप्त करें
     const { data: userData } = await supabaseAuth
