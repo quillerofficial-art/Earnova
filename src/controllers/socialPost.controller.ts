@@ -6,6 +6,16 @@ import { sendPushNotification } from '../utils/notifications';
 import { createClient } from '@supabase/supabase-js';
 import logger from '../utils/logger';
 
+
+const getAuthSupabase = (token: string) => {
+  return createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_ANON_KEY!,
+    { global: { headers: { Authorization: `Bearer ${token}` } } }
+  );
+};
+
+
 export const createPost = async (req: Request, res: Response) => {
   const { title, description, link } = req.body || {};
   const mediaFile = req.file;
@@ -35,8 +45,10 @@ export const createPost = async (req: Request, res: Response) => {
 
     if (error) throw error;
 
+    const supabaseAuth = getAuthSupabase(req.token!);
+
     // 2. यूजर की वर्तमान last_post_date और streak प्राप्त करें
-    const { data: userData } = await supabase
+    const { data: userData } = await supabaseAuth
       .from('users')
       .select('last_post_date, streak')
       .eq('id', req.user!.id)
@@ -59,7 +71,7 @@ export const createPost = async (req: Request, res: Response) => {
     // यदि last_post_date === today (पहले ही आज पोस्ट कर चुका है) → स्ट्रीक न बदलें
 
     // 3. last_post_date और नई streak अपडेट करें
-    await supabase
+    await supabaseAuth
       .from('users')
       .update({
         last_post_date: today,
@@ -137,15 +149,6 @@ export const toggleLike = async (req: Request, res: Response) => {
   }
 };
 
-
-// Helper function to get authenticated supabase client
-const getAuthSupabase = (token: string) => {
-  return createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  );
-};
 
 export const addComment = async (req: Request, res: Response) => {
   const { id: postId } = req.params;
