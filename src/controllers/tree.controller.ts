@@ -7,7 +7,7 @@ import logger from '../utils/logger';
 
 export const generateInvite = async (req: Request, res: Response) => {
   const { parent_id, position } = req.body;
-  if (!parent_id || position === undefined || position < 0 || position > 4) {
+  if (!parent_id || position === undefined || position < 1 || position > 5) {
     return errorResponse(res, 'Invalid parent_id or position (1-5)');
   }
 
