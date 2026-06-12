@@ -128,6 +128,27 @@ export const toggleLike = async (req: Request, res: Response) => {
           .single();
         const name = liker?.name || 'Someone';
         await sendPushNotification(post.user_id, 'New Like', `${name} liked your post`);
+
+        // ✅ In-app notification for like (using supabaseAdmin to bypass RLS)
+        try {
+          const { data: notif } = await supabaseAdmin
+            .from('notifications')
+            .insert({
+              admin_id: null,
+              title: 'New Like',
+              message: `${name} liked your post`
+            })
+            .select()
+            .single();
+
+          if (notif) {
+            await supabaseAdmin
+              .from('user_notifications')
+              .insert({ user_id: post.user_id, notification_id: notif.id });
+          }
+        } catch (notifErr) {
+          logger.error('Error inserting in-app like notification:', notifErr);
+        }
       }
       successResponse(res, { liked: true });
     }
@@ -136,7 +157,6 @@ export const toggleLike = async (req: Request, res: Response) => {
     errorResponse(res, 'Failed to process like');
   }
 };
-
 
 export const addComment = async (req: Request, res: Response) => {
   const { id: postId } = req.params;
@@ -184,7 +204,29 @@ export const addComment = async (req: Request, res: Response) => {
         .eq('id', userId)
         .single();
       const name = commenter?.name || 'Someone';
-      await sendPushNotification(post.user_id, 'New Comment', `${name} commented: ${content.substring(0, 50)}`);
+      const shortContent = content.length > 50 ? content.substring(0, 50) + '...' : content;
+      await sendPushNotification(post.user_id, 'New Comment', `${name} commented: ${shortContent}`);
+
+      // ✅ In-app notification for comment (using supabaseAdmin to bypass RLS)
+      try {
+        const { data: notif } = await supabaseAdmin
+          .from('notifications')
+          .insert({
+            admin_id: null,
+            title: 'New Comment',
+            message: `${name} commented: ${shortContent}`
+          })
+          .select()
+          .single();
+
+        if (notif) {
+          await supabaseAdmin
+            .from('user_notifications')
+            .insert({ user_id: post.user_id, notification_id: notif.id });
+        }
+      } catch (notifErr) {
+        logger.error('Error inserting in-app comment notification:', notifErr);
+      }
     }
     successResponse(res, { comment: data });
   } catch (err) {

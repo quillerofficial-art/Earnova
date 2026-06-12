@@ -171,6 +171,39 @@ await sendPushNotification(userId, '🎉 Welcome to the Poster family!',
   `Ready to turn your posts into payouts? Start sharing and posting today! 🚀`
 );
 
+// ✅ In-app welcome notification
+const { data: notif, error: notifError } = await supabaseAdmin
+  .from('notifications')
+  .insert({
+    admin_id: null, // system notification
+    title: 'Welcome to the family! 🎉',
+    message: `Poster isn't just another social media app—it’s a social communication platform that actually pays you for your daily creativity!
+The formula is simple: Post daily, level up, and get paid every month.
+💰 The Level & Payout Breakdown
+Level Monthly Earnings
+Level 1 (Life Time Free Subscription)
+Level 2 ₹125
+Level 3 ₹625
+Level 4 ₹3,125
+Level 5 ₹15,000
+🚀 How to Level Up & Unlock Free Subscriptions
+There are 5 tasks in total. Every time you complete a task, your level increases by 1!
+Your First Mission (Task 1): Unlock Level 1 & Lifetime Free Access
+The Goal: Refer 5 friends.
+The Catch: Make sure they post their very first post on the app.
+The Deadline: Complete this within your first 7 days of subscribing.
+The Reward: Reaching Level 1 unlocks a Free Lifetime Subscription to the app!
+Ready to turn your posts into payouts? Start sharing and start posting today!`
+  })
+  .select()
+  .single();
+
+if (!notifError && notif) {
+  await supabaseAdmin
+    .from('user_notifications')
+    .insert({ user_id: userId, notification_id: notif.id });
+}
+
     successResponse(res, { message: 'User created successfully', userId });
   } catch (err) {
     if (userId) {
