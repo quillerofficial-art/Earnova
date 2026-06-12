@@ -9,7 +9,7 @@ export const getMyProfile = async (req: Request, res: Response) => {
   try {
     const { data: user, error } = await supabaseAdmin
       .from('users')
-      .select('id, name, email, mobile_number, upi_id, profile_pic_url, level, total_downline, subscription_status, bio, social_links, streak, last_post_date')
+      .select('id, name, email, mobile_number, upi_id, profile_pic_url, level, total_downline, subscription_status, subscription_expiry, bio, social_links, streak, last_post_date')
       .eq('id', userId)
       .single();
     if (error) throw error;
@@ -17,7 +17,10 @@ export const getMyProfile = async (req: Request, res: Response) => {
       .from('posts')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId);
-    successResponse(res, { ...user, total_posts: totalPosts });
+    const { data: inactiveCount } = await supabaseAdmin
+      .rpc('count_inactive_downline', { user_id: userId });
+    const inactiveDownlineCount = inactiveCount || 0;
+    successResponse(res, { ...user, total_posts: totalPosts, inactive_downline_count: inactiveDownlineCount });
   } catch (err) {
     logger.error('Error in getMyProfile:', err);
     errorResponse(res, 'Server error');
