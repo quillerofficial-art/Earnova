@@ -315,11 +315,6 @@ router.get('/', (req, res) => {
       <i data-lucide="download"></i> Get Poster App
     </a>
     
-    <div class="stats">
-      <div class="stat-item"><div class="stat-number">500K+</div><div class="stat-label">Active Users</div></div>
-      <div class="stat-item"><div class="stat-number">10M+</div><div class="stat-label">Posts Shared</div></div>
-      <div class="stat-item"><div class="stat-number">4.9★</div><div class="stat-label">Rating</div></div>
-    </div>
   </div>
 
   <div class="feature-grid">
