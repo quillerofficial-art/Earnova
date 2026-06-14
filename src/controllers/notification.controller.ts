@@ -8,14 +8,20 @@ export const registerDevice = async (req: Request, res: Response) => {
   if (!fcm_token) return errorResponse(res, 'FCM token is required');
 
   try {
-    // ✅ 1. इस यूजर के सभी पुराने डिवाइस टोकन हटाएँ (एक ही डिवाइस रखने के लिए)
-    await supabaseAdmin
+    // ✅ पहले पुराने टोकन हटाएँ (सभी)
+    const { error: deleteError, count } = await supabaseAdmin
       .from('user_devices')
-      .delete()
+      .delete({ count: 'exact' })
       .eq('user_id', req.user!.id);
 
-    // ✅ 2. नया टोकन डालें
-    const { error } = await supabaseAdmin
+    if (deleteError) {
+      logger.error('Error deleting old devices:', deleteError);
+    } else {
+      logger.info(`Deleted ${count} old device tokens for user ${req.user!.id}`);
+    }
+
+    // ✅ नया टोकन डालें
+    const { error: insertError } = await supabaseAdmin
       .from('user_devices')
       .insert({
         user_id: req.user!.id,
@@ -24,7 +30,8 @@ export const registerDevice = async (req: Request, res: Response) => {
         updated_at: new Date(),
       });
 
-    if (error) throw error;
+    if (insertError) throw insertError;
+
     successResponse(res, { message: 'Device registered successfully (only current device active)' });
   } catch (err) {
     logger.error('Error in registerDevice:', err);
