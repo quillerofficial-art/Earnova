@@ -50,7 +50,7 @@ export const deleteUser = async (req: Request, res: Response) => {
 
   try {
     // 1. यूजर की जानकारी (parent_id)
-    const { data: user, error: fetchError } = await supabase
+    const { data: user, error: fetchError } = await supabaseAdmin
       .from('users')
       .select('id, parent_id')
       .eq('id', userId)
@@ -58,7 +58,7 @@ export const deleteUser = async (req: Request, res: Response) => {
     if (fetchError || !user) return res.status(404).json({ message: 'User not found' });
 
     // 2. इस यूजर के सभी बच्चों को लाएँ
-    const { data: children } = await supabase
+    const { data: children } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('parent_id', userId);
@@ -67,32 +67,32 @@ export const deleteUser = async (req: Request, res: Response) => {
     if (children && children.length > 0) {
       const childIds = children.map(c => c.id);
       // बच्चों का parent_id = null करें
-      await supabase
+      await supabaseAdmin
         .from('users')
         .update({ parent_id: null })
         .in('id', childIds);
       
       // हर बच्चे के लिए downline recalc (क्योंकि अब वे रूट हैं)
       for (const childId of childIds) {
-        await supabase.rpc('recalc_user_and_ancestors_v5', { target_id: childId });
+        await supabaseAdmin.rpc('recalc_user_and_ancestors_v5', { target_id: childId });
       }
     }
 
     // 4. पैरेंट के child_ids से इस यूजर को हटाएँ (अगर पैरेंट है)
     if (user.parent_id) {
-      const { data: parent } = await supabase
+      const { data: parent } = await supabaseAdmin
         .from('users')
         .select('child_ids')
         .eq('id', user.parent_id)
         .single();
       let updatedChildren = (parent?.child_ids || []).filter((cId: string) => cId !== userId);
-      await supabase
+      await supabaseAdmin
         .from('users')
         .update({ child_ids: updatedChildren })
         .eq('id', user.parent_id);
       
       // पैरेंट का downline recalc करें
-      await supabase.rpc('recalc_user_and_ancestors_v5', { target_id: user.parent_id });
+      await supabaseAdmin.rpc('recalc_user_and_ancestors_v5', { target_id: user.parent_id });
     }
 
     // 5. Supabase Auth से यूजर डिलीट करें
@@ -103,7 +103,7 @@ export const deleteUser = async (req: Request, res: Response) => {
     }
 
     // 6. public.users टेबल से यूजर डिलीट करें (CASCADE से posts, likes, comments भी)
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await supabaseAdmin
       .from('users')
       .delete()
       .eq('id', userId);
