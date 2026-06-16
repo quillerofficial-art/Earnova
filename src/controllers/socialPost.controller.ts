@@ -44,8 +44,10 @@ export const createPost = async (req: Request, res: Response) => {
     if (error) throw error;
 
     // Streak update (supabaseAdmin – RLS बायपास)
-    const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD (UTC)
+    const yesterday = new Date();
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
 
     const { data: userData } = await supabaseAdmin
       .from('users')
@@ -54,11 +56,15 @@ export const createPost = async (req: Request, res: Response) => {
       .single();
 
     let newStreak = userData?.streak || 0;
-    if (!userData?.last_post_date) {
-      newStreak = 1;
-    } else if (userData.last_post_date === yesterday) {
+    const lastDate = userData?.last_post_date;
+    if (lastDate === today) {
+      // आज पहले ही पोस्ट कर चुका है – स्ट्रीक न बदलें
+      // कुछ न करें
+    } else if (lastDate === yesterdayStr) {
+      // कल पोस्ट की थी → स्ट्रीक बढ़ाएँ
       newStreak += 1;
-    } else if (userData.last_post_date !== today) {
+    } else {
+      // पहली पोस्ट या ब्रेक – स्ट्रीक = 1
       newStreak = 1;
     }
 
