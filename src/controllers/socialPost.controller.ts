@@ -17,9 +17,15 @@ const getAuthSupabase = (token: string) => {
 
 
 export const createPost = async (req: Request, res: Response) => {
-  const { title, description, link } = req.body || {};
+  const { title, description, link, category } = req.body || {};
   const mediaFile = req.file;
   if (!mediaFile) return errorResponse(res, 'Media (image or video) is required');
+
+  // ✅ Category validation
+  const allowedCategories = ['entertainment', 'news', 'books', 'shopping'];
+  if (category && !allowedCategories.includes(category)) {
+    return errorResponse(res, `Invalid category. Allowed: ${allowedCategories.join(', ')}`);
+  }
 
   try {
     const mediaType = mediaFile.mimetype.startsWith('video') ? 'video' : 'image';
@@ -36,6 +42,7 @@ export const createPost = async (req: Request, res: Response) => {
         title: title || null,
         description: description || null,
         link: link || null,
+        category: category || null,
         media_url: mediaUrl,
         media_type: mediaType,
       })
@@ -81,17 +88,47 @@ export const createPost = async (req: Request, res: Response) => {
 };
 
 export const getFeed = async (req: Request, res: Response) => {
-  const { page = 1, limit = 10 } = req.query;
+  const { page = 1, limit = 10, category, combined_category } = req.query;
   const from = (Number(page) - 1) * Number(limit);
   const to = from + Number(limit) - 1;
+
   try {
-    const { data, error, count } = await supabase
+    let query = supabase
       .from('posts')
-      .select(`*, users!inner (id, name, profile_pic_url)`, { count: 'exact' })
+      .select(`
+        *,
+        users!inner (id, name, profile_pic_url)
+      `, { count: 'exact' });
+
+    // ✅ Single category filter
+    if (category && typeof category === 'string') {
+      const allowedCategories = ['entertainment', 'news', 'books', 'shopping'];
+      if (!allowedCategories.includes(category)) {
+        return errorResponse(res, 'Invalid category');
+      }
+      query = query.eq('category', category);
+    }
+
+    // ✅ Combined category filter (entertainment + news)
+    if (combined_category && typeof combined_category === 'string') {
+      if (combined_category === 'entertainment_news') {
+        query = query.in('category', ['entertainment', 'news']);
+      } else {
+        return errorResponse(res, 'Invalid combined_category. Use: entertainment_news');
+      }
+    }
+
+    const { data, error, count } = await query
       .order('created_at', { ascending: false })
       .range(from, to);
+
     if (error) throw error;
-    successResponse(res, { posts: data, total: count, page: Number(page), limit: Number(limit) });
+    successResponse(res, {
+      posts: data,
+      total: count,
+      page: Number(page),
+      limit: Number(limit),
+    });
   } catch (err) {
     logger.error('Error in getFeed:', err);
     errorResponse(res, 'Failed to fetch feed');
