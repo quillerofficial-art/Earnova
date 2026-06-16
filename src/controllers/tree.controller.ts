@@ -5,6 +5,17 @@ import { isDescendant } from '../utils/helpers';
 import { successResponse, errorResponse } from '../utils/response';
 import logger from '../utils/logger';
 
+// Generate a random 12-character alphanumeric uppercase token (A-Z, 0-9)
+function generateInviteToken(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let token = '';
+  const bytes = crypto.randomBytes(12);
+  for (let i = 0; i < 12; i++) {
+    token += chars[bytes[i] % chars.length];
+  }
+  return token;
+}
+
 export const generateInvite = async (req: Request, res: Response) => {
   const { parent_id, position } = req.body;
   if (!parent_id || position === undefined || position < 1 || position > 5) {
@@ -31,7 +42,7 @@ export const generateInvite = async (req: Request, res: Response) => {
       .maybeSingle();
     if (existing) return errorResponse(res, 'Position already occupied');
 
-    const token = crypto.randomBytes(32).toString('hex');
+    const token = generateInviteToken();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await supabaseAdmin.from('invitation_tokens').insert({
       token,
