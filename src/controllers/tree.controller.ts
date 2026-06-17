@@ -97,3 +97,54 @@ export const getChildren = async (req: Request, res: Response) => {
     errorResponse(res, 'Server error');
   }
 };
+
+// Search in downline (tree) by name or email
+export const searchDownline = async (req: Request, res: Response) => {
+  const { q, page = 1, limit = 20 } = req.query;
+  const userId = req.user!.id;
+
+  if (!q || typeof q !== 'string') {
+    return errorResponse(res, 'Search query (q) is required');
+  }
+
+  const from = (Number(page) - 1) * Number(limit);
+  const to = from + Number(limit) - 1;
+
+  try {
+    // 1. Get all descendant IDs using RPC function
+    const { data: descendantIds, error: rpcError } = await supabaseAdmin
+      .rpc('get_descendants', { root_id: userId });
+
+    if (rpcError) throw rpcError;
+    if (!descendantIds || descendantIds.length === 0) {
+      return successResponse(res, { users: [], total: 0, page: Number(page), limit: Number(limit) });
+    }
+
+    // 2. Search in users table where id IN descendantIds
+    let query = supabaseAdmin
+      .from('users')
+      .select('id, name, email, profile_pic_url, level, subscription_status, total_downline', { count: 'exact' })
+      .in('id', descendantIds.map((d: any) => d.id))
+      .eq('is_deleted', false);
+
+    // 3. Search by name or email (partial match)
+    const searchTerm = `%${q}%`;
+    query = query.or(`name.ilike.${searchTerm},email.ilike.${searchTerm}`);
+
+    const { data, error, count } = await query
+      .order('name', { ascending: true })
+      .range(from, to);
+
+    if (error) throw error;
+
+    successResponse(res, {
+      users: data,
+      total: count,
+      page: Number(page),
+      limit: Number(limit),
+    });
+  } catch (err) {
+    logger.error('Error in searchDownline:', err);
+    errorResponse(res, 'Failed to search downline');
+  }
+};
