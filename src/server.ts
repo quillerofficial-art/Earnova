@@ -99,32 +99,35 @@ cron.schedule('0 2 * * *', async () => {
 });
 
 // Delete notifications older than 7 days
+// Delete notifications older than 7 days (using supabaseAdmin to bypass RLS)
 cron.schedule('0 2 * * *', async () => {
   console.log('Deleting old notifications...');
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   
   try {
-    // First delete from user_notifications (if no cascade)
-    const { error: userNotifError } = await supabase
+    // 1. पहले user_notifications से डिलीट करें
+    const { error: userNotifError, count } = await supabaseAdmin
       .from('user_notifications')
-      .delete()
+      .delete({ count: 'exact' })
       .lt('created_at', sevenDaysAgo.toISOString());
     
     if (userNotifError) {
       console.error('Error deleting user_notifications:', userNotifError);
+    } else {
+      console.log(`✅ Deleted ${count} old user_notifications`);
     }
     
-    // Then delete from notifications
-    const { error: notifError } = await supabase
+    // 2. फिर notifications टेबल से डिलीट करें
+    const { error: notifError, count: notifCount } = await supabaseAdmin
       .from('notifications')
-      .delete()
+      .delete({ count: 'exact' })
       .lt('created_at', sevenDaysAgo.toISOString());
     
     if (notifError) {
       console.error('Error deleting notifications:', notifError);
     } else {
-      console.log('Old notifications cleaned up');
+      console.log(`✅ Deleted ${notifCount} old notifications`);
     }
   } catch (err) {
     console.error('Cleanup failed:', err);
