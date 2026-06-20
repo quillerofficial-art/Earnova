@@ -20,6 +20,7 @@ import socialPostRoutes from './routes/socialPost.routes';
 import notificationRoutes from './routes/notification.routes';
 import { initFirebase } from './utils/notifications';
 import { sendPushNotification } from './utils/notifications';
+import compression from 'compression';
 
 initFirebase();
 dotenv.config()
@@ -58,6 +59,7 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), hand
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(express.static('public')) // For serving invite page assets
+app.use(compression()); // ✅ Enable gzip/brotli compression
 app.use(requestIdMiddleware)
 
 // Routes
