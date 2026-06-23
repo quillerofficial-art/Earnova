@@ -16,8 +16,10 @@ router.put('/profile', validate(updateProfileSchema), updateProfile)
 router.get('/notifications', getNotifications)
 router.put('/notifications/:id/read', markNotificationRead)
 router.post('/profile-pic', uploadSingle, uploadProfilePic)
-router.get('/:id', getUserById)
 router.get('/posts', getMyPosts);                 // ✅ अपनी Posts
 router.get('/posts/:userId', getUserPostsProfile); // ✅ दूसरे User की Posts
+
+router.get('/:id', getUserById)
+
 
 export default router
