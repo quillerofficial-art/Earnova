@@ -1,5 +1,5 @@
 import express from 'express'
-import { getProfile, updateProfile, getNotifications, markNotificationRead, getUserById } from '../controllers/user.controller'
+import { getProfile, updateProfile, getNotifications, markNotificationRead, getUserById, getUserPostsProfile, getMyPosts } from '../controllers/user.controller'
 import { authMiddleware } from '../middlewares/auth.middleware'
 import { uploadProfilePic } from '../controllers/upload.controller'
 import { uploadSingle } from '../middlewares/upload.middleware'
@@ -17,5 +17,7 @@ router.get('/notifications', getNotifications)
 router.put('/notifications/:id/read', markNotificationRead)
 router.post('/profile-pic', uploadSingle, uploadProfilePic)
 router.get('/:id', getUserById)
+router.get('/posts', getMyPosts);                 // ✅ अपनी Posts
+router.get('/posts/:userId', getUserPostsProfile); // ✅ दूसरे User की Posts
 
 export default router
