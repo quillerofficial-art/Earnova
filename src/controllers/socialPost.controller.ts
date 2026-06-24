@@ -363,3 +363,32 @@ export const getUserPosts = async (req: Request, res: Response) => {
     errorResponse(res, 'Failed to fetch user posts');
   }
 };
+
+export const getReels = async (req: Request, res: Response) => {
+  const { page = 1, limit = 10 } = req.query;
+  const from = (Number(page) - 1) * Number(limit);
+  const to = from + Number(limit) - 1;
+
+  try {
+    const { data, error, count } = await supabase
+      .from('posts')
+      .select(`
+        *,
+        users!inner (id, name, profile_pic_url)
+      `, { count: 'exact' })
+      .eq('media_type', 'video')   // ✅ केवल Video
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+    successResponse(res, {
+      posts: data,
+      total: count,
+      page: Number(page),
+      limit: Number(limit),
+    });
+  } catch (err) {
+    logger.error('Error in getReels:', err);
+    errorResponse(res, 'Failed to fetch reels');
+  }
+};
