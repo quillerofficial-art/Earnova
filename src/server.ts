@@ -37,6 +37,9 @@ import postRoutes from './routes/post.routes'
 import planRoutes from './routes/plan.routes'
 import productRoutes from './routes/product.routes'
 import inviteRoutes from './routes/invite.routes'
+import accountRoutes from './routes/account.routes';
+import blockRoutes from './routes/block.routes';
+import reportRoutes from './routes/report.routes';
 
 validateEnv()
 
@@ -77,6 +80,9 @@ app.use('/api/social-posts', socialPostRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/users/block', blockRoutes);
+app.use('/api/account', accountRoutes);
 
 // Error handling middleware (should be last)
 app.use(errorHandler)

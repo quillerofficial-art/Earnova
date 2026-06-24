@@ -342,3 +342,161 @@ export const broadcastNotification = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Failed to send broadcast' });
   }
 };
+
+// ============ ADMIN REPORTS ============
+
+// Get all reports with filters
+export const getReports = async (req: Request, res: Response) => {
+  const { status, type, page = 1, limit = 20 } = req.query;
+  const from = (Number(page) - 1) * Number(limit);
+  const to = from + Number(limit) - 1;
+
+  try {
+    let query = supabaseAdmin
+      .from('reports')
+      .select(`
+        *,
+        reporter:users!reports_reporter_id_fkey (id, name, email, profile_pic_url)
+      `, { count: 'exact' })
+      .order('created_at', { ascending: false });
+
+    if (status && typeof status === 'string') {
+      const validStatuses = ['pending', 'reviewed', 'resolved', 'dismissed'];
+      if (!validStatuses.includes(status)) {
+        return errorResponse(res, 'Invalid status. Allowed: pending, reviewed, resolved, dismissed');
+      }
+      query = query.eq('status', status);
+    }
+
+    if (type && typeof type === 'string') {
+      const validTypes = ['post', 'user', 'comment'];
+      if (!validTypes.includes(type)) {
+        return errorResponse(res, 'Invalid type. Allowed: post, user, comment');
+      }
+      query = query.eq('target_type', type);
+    }
+
+    const { data, error, count } = await query.range(from, to);
+
+    if (error) throw error;
+    successResponse(res, {
+      reports: data,
+      total: count,
+      page: Number(page),
+      limit: Number(limit),
+    });
+  } catch (err) {
+    logger.error('Error in getReports:', err);
+    errorResponse(res, 'Failed to fetch reports');
+  }
+};
+
+// Update report status (Admin Action)
+export const updateReportStatus = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { status, adminNote } = req.body;
+
+  if (!status) return errorResponse(res, 'Status is required');
+
+  const validStatuses = ['pending', 'reviewed', 'resolved', 'dismissed'];
+  if (!validStatuses.includes(status)) {
+    return errorResponse(res, 'Invalid status. Allowed: pending, reviewed, resolved, dismissed');
+  }
+
+  try {
+    // 1. Check if report exists
+    const { data: report, error: fetchError } = await supabaseAdmin
+      .from('reports')
+      .select('id, status')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !report) {
+      return errorResponse(res, 'Report not found', 404);
+    }
+
+    // 2. Update status
+    const updates: any = { status, updated_at: new Date() };
+    if (adminNote) updates.admin_note = adminNote;
+
+    const { data, error } = await supabaseAdmin
+      .from('reports')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // 3. (Optional) Send notification to reporter – बाद में जोड़ सकते हो
+    // await sendPushNotification(report.reporter_id, 'Report Update', `Your report status: ${status}`);
+
+    successResponse(res, { message: 'Report status updated', report: data });
+  } catch (err) {
+    logger.error('Error in updateReportStatus:', err);
+    errorResponse(res, 'Failed to update report');
+  }
+};
+
+// Get report statistics (for Admin Dashboard)
+export const getReportStats = async (req: Request, res: Response) => {
+  try {
+    // Total pending
+    const { count: pendingCount } = await supabaseAdmin
+      .from('reports')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'pending');
+
+    // Total reviewed
+    const { count: reviewedCount } = await supabaseAdmin
+      .from('reports')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'reviewed');
+
+    // Total resolved
+    const { count: resolvedCount } = await supabaseAdmin
+      .from('reports')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'resolved');
+
+    // Total dismissed
+    const { count: dismissedCount } = await supabaseAdmin
+      .from('reports')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'dismissed');
+
+    // By type
+    const { count: postReports } = await supabaseAdmin
+      .from('reports')
+      .select('*', { count: 'exact', head: true })
+      .eq('target_type', 'post');
+
+    const { count: userReports } = await supabaseAdmin
+      .from('reports')
+      .select('*', { count: 'exact', head: true })
+      .eq('target_type', 'user');
+
+    const { count: commentReports } = await supabaseAdmin
+      .from('reports')
+      .select('*', { count: 'exact', head: true })
+      .eq('target_type', 'comment');
+
+    successResponse(res, {
+      by_status: {
+        pending: pendingCount || 0,
+        reviewed: reviewedCount || 0,
+        resolved: resolvedCount || 0,
+        dismissed: dismissedCount || 0,
+      },
+      by_type: {
+        post: postReports || 0,
+        user: userReports || 0,
+        comment: commentReports || 0,
+      },
+      total: (pendingCount || 0) + (reviewedCount || 0) + (resolvedCount || 0) + (dismissedCount || 0),
+    });
+  } catch (err) {
+    logger.error('Error in getReportStats:', err);
+    errorResponse(res, 'Failed to fetch report stats');
+  }
+};

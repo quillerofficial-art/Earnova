@@ -4,6 +4,7 @@ import { uploadToBackblaze } from '../utils/s3Upload';
 import { successResponse, errorResponse } from '../utils/response';
 import { sendPushNotification } from '../utils/notifications';
 import { createClient } from '@supabase/supabase-js';
+import sharp from 'sharp';
 import logger from '../utils/logger';
 
 
@@ -30,11 +31,28 @@ export const createPost = async (req: Request, res: Response) => {
   try {
     const mediaType = mediaFile.mimetype.startsWith('video') ? 'video' : 'image';
     const folder = mediaType === 'video' ? 'posts/videos' : 'posts/images';
+
+    // ✅ 1. Image के लिए Width/Height निकालो (Video के लिए null)
+    let width: number | null = null;
+    let height: number | null = null;
+
+    if (mediaType === 'image') {
+      try {
+        const metadata = await sharp(mediaFile.buffer).metadata();
+        width = metadata.width || null;
+        height = metadata.height || null;
+      } catch (err) {
+        console.warn('Could not extract image dimensions:', err);
+        // Fail होने पर भी Upload रुकेगा नहीं
+      }
+    }
+
+    // ✅ 2. Upload (Original – अगर Thumbnail System लगा है तो उसका भी इस्तेमाल कर सकते हो)
     const mediaUrl = await uploadToBackblaze(mediaFile, folder);
 
     const supabaseAuth = getAuthSupabase(req.token!);
 
-    // Post INSERT (प्रमाणित क्लाइंट – RLS ठीक)
+    // ✅ 3. INSERT में width और height जोड़ो
     const { data, error } = await supabaseAuth
       .from('posts')
       .insert({
@@ -45,13 +63,15 @@ export const createPost = async (req: Request, res: Response) => {
         category: category || null,
         media_url: mediaUrl,
         media_type: mediaType,
+        width: width,      // ✅ नया
+        height: height,    // ✅ नया
       })
       .select()
       .single();
     if (error) throw error;
 
     // Streak update (supabaseAdmin – RLS बायपास)
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD (UTC)
+    const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date();
     yesterday.setUTCDate(yesterday.getUTCDate() - 1);
     const yesterdayStr = yesterday.toISOString().split('T')[0];
@@ -66,12 +86,9 @@ export const createPost = async (req: Request, res: Response) => {
     const lastDate = userData?.last_post_date;
     if (lastDate === today) {
       // आज पहले ही पोस्ट कर चुका है – स्ट्रीक न बदलें
-      // कुछ न करें
     } else if (lastDate === yesterdayStr) {
-      // कल पोस्ट की थी → स्ट्रीक बढ़ाएँ
       newStreak += 1;
     } else {
-      // पहली पोस्ट या ब्रेक – स्ट्रीक = 1
       newStreak = 1;
     }
 
