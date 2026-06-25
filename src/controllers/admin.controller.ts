@@ -346,12 +346,14 @@ export const broadcastNotification = async (req: Request, res: Response) => {
 // ============ ADMIN REPORTS ============
 
 // Get all reports with filters
+// Get all reports with filters + TARGET DETAILS
 export const getReports = async (req: Request, res: Response) => {
   const { status, type, page = 1, limit = 20 } = req.query;
   const from = (Number(page) - 1) * Number(limit);
   const to = from + Number(limit) - 1;
 
   try {
+    // ✅ 1. Fetch reports with reporter details
     let query = supabaseAdmin
       .from('reports')
       .select(`
@@ -376,11 +378,100 @@ export const getReports = async (req: Request, res: Response) => {
       query = query.eq('target_type', type);
     }
 
-    const { data, error, count } = await query.range(from, to);
+    const { data: reports, error, count } = await query.range(from, to);
 
     if (error) throw error;
+    if (!reports || reports.length === 0) {
+      return successResponse(res, {
+        reports: [],
+        total: 0,
+        page: Number(page),
+        limit: Number(limit),
+      });
+    }
+
+    // ✅ 2. Collect target IDs by type (Batch collect)
+    const targetUserIds: string[] = [];
+    const targetPostIds: string[] = [];
+    const targetCommentIds: string[] = [];
+
+    for (const report of reports) {
+      if (report.target_type === 'user' && !targetUserIds.includes(report.target_id)) {
+        targetUserIds.push(report.target_id);
+      } else if (report.target_type === 'post' && !targetPostIds.includes(report.target_id)) {
+        targetPostIds.push(report.target_id);
+      } else if (report.target_type === 'comment' && !targetCommentIds.includes(report.target_id)) {
+        targetCommentIds.push(report.target_id);
+      }
+    }
+
+    // ✅ 3. Fetch target details in parallel (Batch queries)
+    const [targetUsers, targetPosts, targetComments] = await Promise.all([
+      targetUserIds.length > 0 
+        ? supabaseAdmin.from('users').select('id, name, email, profile_pic_url').in('id', targetUserIds)
+        : { data: [], error: null },
+      targetPostIds.length > 0 
+        ? supabaseAdmin.from('posts').select('id, title, description, media_url, media_type, user_id').in('id', targetPostIds)
+        : { data: [], error: null },
+      targetCommentIds.length > 0 
+        ? supabaseAdmin.from('comments').select('id, content, user_id, post_id').in('id', targetCommentIds)
+        : { data: [], error: null },
+    ]);
+
+    // ✅ 4. Create Maps for fast lookup
+    const userMap = new Map(targetUsers.data?.map((u: any) => [u.id, u]) || []);
+    const postMap = new Map(targetPosts.data?.map((p: any) => [p.id, p]) || []);
+    const commentMap = new Map(targetComments.data?.map((c: any) => [c.id, c]) || []);
+
+    // ✅ 5. Merge target details into reports
+    const enrichedReports = reports.map((report: any) => {
+      let targetDetails = null;
+
+      if (report.target_type === 'user') {
+        const user = userMap.get(report.target_id);
+        if (user) {
+          targetDetails = {
+            user_id: user.id,
+            name: user.name,
+            email: user.email,
+            profile_pic_url: user.profile_pic_url,
+          };
+        }
+      } else if (report.target_type === 'post') {
+        const post = postMap.get(report.target_id);
+        if (post) {
+          targetDetails = {
+            post_id: post.id,
+            title: post.title,
+            description: post.description,
+            media_url: post.media_url,
+            media_type: post.media_type,
+            posted_by: post.user_id,
+          };
+          // ✅ Also fetch poster's name (optional but helpful)
+          // We can fetch in same batch above, or do a quick lookup in userMap if we fetched all users.
+          // I'll add a fallback fetch for poster separately if needed.
+        }
+      } else if (report.target_type === 'comment') {
+        const comment = commentMap.get(report.target_id);
+        if (comment) {
+          targetDetails = {
+            comment_id: comment.id,
+            content: comment.content,
+            posted_by: comment.user_id,
+            post_id: comment.post_id,
+          };
+        }
+      }
+
+      return {
+        ...report,
+        target_details: targetDetails, // ✅ Naya field – poori target info
+      };
+    });
+
     successResponse(res, {
-      reports: data,
+      reports: enrichedReports,
       total: count,
       page: Number(page),
       limit: Number(limit),
