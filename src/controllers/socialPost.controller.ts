@@ -6,6 +6,10 @@ import { sendPushNotification } from '../utils/notifications';
 import { createClient } from '@supabase/supabase-js';
 import sharp from 'sharp';
 import logger from '../utils/logger';
+import ffmpeg from 'fluent-ffmpeg';
+import { v4 as uuidv4 } from 'uuid';
+import fs from 'fs/promises';
+import path from 'path';
 
 
 const getAuthSupabase = (token: string) => {
@@ -22,7 +26,6 @@ export const createPost = async (req: Request, res: Response) => {
   const mediaFile = req.file;
   if (!mediaFile) return errorResponse(res, 'Media (image or video) is required');
 
-  // ✅ Category validation
   const allowedCategories = ['entertainment', 'news', 'books', 'shopping'];
   if (category && !allowedCategories.includes(category)) {
     return errorResponse(res, `Invalid category. Allowed: ${allowedCategories.join(', ')}`);
@@ -32,10 +35,12 @@ export const createPost = async (req: Request, res: Response) => {
     const mediaType = mediaFile.mimetype.startsWith('video') ? 'video' : 'image';
     const folder = mediaType === 'video' ? 'posts/videos' : 'posts/images';
 
-    // ✅ 1. Image के लिए Width/Height निकालो (Video के लिए null)
     let width: number | null = null;
     let height: number | null = null;
+    let duration: number | null = null;
+    let thumbnailUrl: string | null = null;
 
+    // ✅ IMAGE – Width/Height
     if (mediaType === 'image') {
       try {
         const metadata = await sharp(mediaFile.buffer).metadata();
@@ -43,16 +48,94 @@ export const createPost = async (req: Request, res: Response) => {
         height = metadata.height || null;
       } catch (err) {
         console.warn('Could not extract image dimensions:', err);
-        // Fail होने पर भी Upload रुकेगा नहीं
+      }
+    } 
+    // ✅ VIDEO – Width/Height + Duration + Thumbnail
+    else if (mediaType === 'video') {
+      try {
+        const tempId = uuidv4();
+        const tempPath = path.join('/tmp', `video_${tempId}.mp4`);
+        
+        // 1️⃣ Temp file likho
+        await fs.writeFile(tempPath, mediaFile.buffer);
+        
+        // 2️⃣ FFprobe se Dimensions + Duration nikaalo
+        const { width: w, height: h, duration: dur } = await new Promise<{ width: number | null; height: number | null; duration: number | null }>((resolve) => {
+          ffmpeg.ffprobe(tempPath, (err, metadata) => {
+            if (err) {
+              console.error('FFprobe error:', err.message);
+              return resolve({ width: null, height: null, duration: null });
+            }
+            
+            const videoStream = metadata.streams.find(s => s.codec_type === 'video');
+            const w = videoStream?.width || null;
+            const h = videoStream?.height || null;
+            const dur = metadata.format.duration ? Math.round(metadata.format.duration) : null; // seconds
+            
+            resolve({ width: w, height: h, duration: dur });
+          });
+        });
+        
+        width = w;
+        height = h;
+        duration = dur;
+        
+        // 3️⃣ Thumbnail Generate karo (1 second pe)
+        try {
+          const thumbFileName = `thumb_${tempId}.jpg`;
+          const thumbPath = path.join('/tmp', thumbFileName);
+          
+          await new Promise<void>((resolve, reject) => {
+            ffmpeg(tempPath)
+              .screenshots({
+                timestamps: [1], // 1 second mark
+                filename: thumbFileName,
+                folder: '/tmp',
+                size: '640x?', // Width 640, height auto (aspect ratio maintain)
+              })
+              .on('end', () => resolve())
+              .on('error', (err) => reject(err));
+          });
+          
+          // ✅ Thumbnail file read karo
+          const thumbBuffer = await fs.readFile(thumbPath);
+          
+          // 🧹 Temp thumbnail delete karo
+          await fs.unlink(thumbPath).catch(() => {});
+          
+          // ✅ Virtual Multer File banake R2 upload karo
+          const virtualFile = {
+            buffer: thumbBuffer,
+            originalname: `thumbnail_${tempId}.jpg`,
+            mimetype: 'image/jpeg',
+            size: thumbBuffer.length,
+            fieldname: 'file',
+            encoding: '7bit',
+          } as Express.Multer.File;
+          
+          thumbnailUrl = await uploadToBackblaze(virtualFile, 'posts/thumbnails');
+          
+        } catch (thumbErr) {
+          console.error('Could not generate thumbnail:', thumbErr);
+          // Thumbnail fail ho toh bhi post banegi (thumbnailUrl null rahega)
+        }
+        
+        // 🧹 Main temp video delete karo
+        await fs.unlink(tempPath).catch(() => {});
+        
+      } catch (ffmpegErr) {
+        console.error('Could not process video:', ffmpegErr);
+        // Agar FFprobe fail ho, toh width/height/duration null rahenge
+        // Post create ho jayegi (App crash nahi)
       }
     }
 
-    // ✅ 2. Upload (Original – अगर Thumbnail System लगा है तो उसका भी इस्तेमाल कर सकते हो)
+    // ✅ Upload Original Media to R2
     const mediaUrl = await uploadToBackblaze(mediaFile, folder);
 
     const supabaseAuth = getAuthSupabase(req.token!);
 
-    // ✅ 3. INSERT में width और height जोड़ो
+    // ✅ INSERT with ALL fields (width, height, duration, thumbnail_url)
     const { data, error } = await supabaseAuth
       .from('posts')
       .insert({
@@ -63,14 +146,16 @@ export const createPost = async (req: Request, res: Response) => {
         category: category || null,
         media_url: mediaUrl,
         media_type: mediaType,
-        width: width,      // ✅ नया
-        height: height,    // ✅ नया
+        width: width,
+        height: height,
+        duration: duration,          // ✅ Naya
+        thumbnail_url: thumbnailUrl, // ✅ Naya (pehle null tha)
       })
       .select()
       .single();
     if (error) throw error;
 
-    // Streak update (supabaseAdmin – RLS बायपास)
+    // ✅ Streak update (same as before)
     const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date();
     yesterday.setUTCDate(yesterday.getUTCDate() - 1);
@@ -85,7 +170,7 @@ export const createPost = async (req: Request, res: Response) => {
     let newStreak = userData?.streak || 0;
     const lastDate = userData?.last_post_date;
     if (lastDate === today) {
-      // आज पहले ही पोस्ट कर चुका है – स्ट्रीक न बदलें
+      // Already posted today
     } else if (lastDate === yesterdayStr) {
       newStreak += 1;
     } else {
@@ -140,8 +225,15 @@ export const getFeed = async (req: Request, res: Response) => {
       .range(from, to);
 
     if (error) throw error;
+
+    // ✅ Aspect Ratio add karo
+    const postsWithRatio = data.map((post: any) => ({
+      ...post,
+     aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
+    }));
+
     successResponse(res, {
-      posts: data,
+      posts: postsWithRatio,
       total: count,
       page: Number(page),
       limit: Number(limit),
@@ -374,7 +466,14 @@ export const getUserPosts = async (req: Request, res: Response) => {
       .range(from, to);
 
     if (error) throw error;
-    successResponse(res, { posts: data, total: count, page: Number(page), limit: Number(limit) });
+
+    // ✅ Aspect Ratio add karo
+    const postsWithRatio = data.map((post: any) => ({
+     ...post,
+     aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
+    }));
+
+    successResponse(res, { posts: postsWithRatio, total: count, page: Number(page), limit: Number(limit) });
   } catch (err) {
     logger.error('Error in getUserPosts:', err);
     errorResponse(res, 'Failed to fetch user posts');
@@ -398,8 +497,15 @@ export const getReels = async (req: Request, res: Response) => {
       .range(from, to);
 
     if (error) throw error;
+
+    // ✅ Aspect Ratio add karo
+    const postsWithRatio = data.map((post: any) => ({
+      ...post,
+      aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
+    }));
+
     successResponse(res, {
-      posts: data,
+      posts: postsWithRatio,
       total: count,
       page: Number(page),
       limit: Number(limit),

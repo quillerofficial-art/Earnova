@@ -65,8 +65,14 @@ export const searchPosts = async (req: Request, res: Response) => {
       .range(from, to);
 
     if (error) throw error;
+
+    const postsWithRatio = data.map((post: any) => ({
+     ...post,
+     aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
+    }));
+
     successResponse(res, {
-      posts: data,
+      posts: postsWithRatio,
       total: count,
       page: Number(page),
       limit: Number(limit),
