@@ -88,7 +88,7 @@ export const createPost = async (req: Request, res: Response) => {
           await new Promise<void>((resolve, reject) => {
             ffmpeg(tempPath)
               .screenshots({
-                timestamps: [1], // 1 second mark
+                timestamps: [4], // 4 second mark
                 filename: thumbFileName,
                 folder: '/tmp',
                 size: '640x?', // Width 640, height auto (aspect ratio maintain)
