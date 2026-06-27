@@ -10,6 +10,7 @@ import ffmpeg from 'fluent-ffmpeg';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs/promises';
 import path from 'path';
+import { addLikeStatusToPosts } from '../utils/helpers';
 
 
 const getAuthSupabase = (token: string) => {
@@ -226,8 +227,9 @@ export const getFeed = async (req: Request, res: Response) => {
 
     if (error) throw error;
 
-    // ✅ Aspect Ratio add karo
-    const postsWithRatio = data.map((post: any) => ({
+    // ✅ Aspect Ratio + Like Status add karo
+    const postsWithStatus = await addLikeStatusToPosts(data, req.user!.id);
+    const postsWithRatio = postsWithStatus.map((post: any) => ({
       ...post,
      aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
     }));
@@ -467,8 +469,9 @@ export const getUserPosts = async (req: Request, res: Response) => {
 
     if (error) throw error;
 
-    // ✅ Aspect Ratio add karo
-    const postsWithRatio = data.map((post: any) => ({
+    // ✅ Aspect Ratio + Like Status add karo
+    const postsWithStatus = await addLikeStatusToPosts(data, req.user!.id);
+    const postsWithRatio = postsWithStatus.map((post: any) => ({
      ...post,
      aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
     }));
@@ -498,8 +501,9 @@ export const getReels = async (req: Request, res: Response) => {
 
     if (error) throw error;
 
-    // ✅ Aspect Ratio add karo
-    const postsWithRatio = data.map((post: any) => ({
+    // ✅ Aspect Ratio + Like Status add karo
+    const postsWithStatus = await addLikeStatusToPosts(data, req.user!.id);
+    const postsWithRatio = postsWithStatus.map((post: any) => ({
       ...post,
       aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
     }));

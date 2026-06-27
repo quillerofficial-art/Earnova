@@ -21,3 +21,31 @@ export const isDescendant = async (ancestorId: string, userId: string): Promise<
 export const recalcDownline = async (userId: string) => {
   await supabaseAdmin.rpc('recalc_user_and_ancestors_v5', { target_id: userId });
 };
+
+// Add is_liked_by_user field to posts
+export const addLikeStatusToPosts = async (
+  posts: any[],
+  userId: string
+): Promise<any[]> => {
+  if (!posts || posts.length === 0) return posts;
+
+  // Fetch all likes by this user for these posts
+  const postIds = posts.map(p => p.id);
+  const { data: likes, error } = await supabaseAdmin
+    .from('likes')
+    .select('post_id')
+    .in('post_id', postIds)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error fetching like status:', error);
+    return posts.map(p => ({ ...p, is_liked_by_user: false }));
+  }
+
+  const likedPostIds = new Set(likes?.map(l => l.post_id) || []);
+
+  return posts.map(post => ({
+    ...post,
+    is_liked_by_user: likedPostIds.has(post.id),
+  }));
+};

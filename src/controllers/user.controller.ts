@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { supabase, supabaseAdmin } from '../config/supabase'
 import logger from '../utils/logger'
 import { successResponse, errorResponse } from '../utils/response'
+import { addLikeStatusToPosts } from '../utils/helpers';
 
 // Get own profile
 export const getProfile = async (req: Request, res: Response) => {
@@ -166,8 +167,15 @@ export const getMyPosts = async (req: Request, res: Response) => {
       .range(from, to);
 
     if (error) throw error;
+
+    // ✅ Aspect Ratio + Like Status add karo
+    const postsWithStatus = await addLikeStatusToPosts(data, req.user!.id);
+    const postsWithRatio = postsWithStatus.map((post: any) => ({
+     ...post,
+     aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
+    }));
     successResponse(res, {
-      posts: data,
+      posts: postsWithRatio,
       total: count,
       page: Number(page),
       limit: Number(limit),
@@ -209,8 +217,14 @@ export const getUserPostsProfile = async (req: Request, res: Response) => {
       .range(from, to);
 
     if (error) throw error;
+    // ✅ Aspect Ratio + Like Status add karo
+    const postsWithStatus = await addLikeStatusToPosts(data, req.user!.id);
+    const postsWithRatio = postsWithStatus.map((post: any) => ({
+      ...post,
+      aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
+    }));
     successResponse(res, {
-      posts: data,
+      posts: postsWithRatio,
       total: count,
       page: Number(page),
       limit: Number(limit),
