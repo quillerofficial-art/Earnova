@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { supabase } from '../config/supabase';
 import { successResponse, errorResponse } from '../utils/response';
 import logger from '../utils/logger';
+import { addLikeStatusToPosts, getBlockedUserIds } from '../utils/helpers';
 
 export const searchUsers = async (req: Request, res: Response) => {
   const { q, page = 1, limit = 20 } = req.query;
@@ -30,12 +31,20 @@ export const searchPosts = async (req: Request, res: Response) => {
   const to = from + Number(limit) - 1;
 
   try {
+    // ✅ 1. Mutual Blocked Users fetch (NEW)
+    const blockedIds = await getBlockedUserIds(req.user!.id);
+
     let query = supabase
       .from('posts')
       .select(`
         *,
         users!inner (id, name, profile_pic_url)
       `, { count: 'exact' });
+
+    // ✅ 2. Blocked Users ki Posts search se hatao (NEW)
+    if (blockedIds.length > 0) {
+      query = query.not('user_id', 'in', `(${blockedIds.join(',')})`);
+    }
 
     // ✅ Category filter
     if (category && typeof category === 'string') {
@@ -66,9 +75,11 @@ export const searchPosts = async (req: Request, res: Response) => {
 
     if (error) throw error;
 
-    const postsWithRatio = data.map((post: any) => ({
-     ...post,
-     aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
+    // ✅ Aspect Ratio + Like Status add karo
+    const postsWithStatus = await addLikeStatusToPosts(data, req.user!.id);
+    const postsWithRatio = postsWithStatus.map((post: any) => ({
+      ...post,
+      aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
     }));
 
     successResponse(res, {

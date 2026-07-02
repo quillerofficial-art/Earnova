@@ -2,7 +2,7 @@ import { Request, Response } from 'express'
 import { supabase, supabaseAdmin } from '../config/supabase'
 import logger from '../utils/logger'
 import { successResponse, errorResponse } from '../utils/response'
-import { addLikeStatusToPosts } from '../utils/helpers';
+import { addLikeStatusToPosts, getBlockedUserIds } from '../utils/helpers';
 
 // Get own profile
 export const getProfile = async (req: Request, res: Response) => {
@@ -206,23 +206,48 @@ export const getUserPostsProfile = async (req: Request, res: Response) => {
   }
 
   try {
-    const { data, error, count } = await supabase
+    // ✅ 1. userId ko string mein convert karo (FIX)
+    const targetUserId = Array.isArray(userId) ? userId[0] : userId;
+
+    // ✅ 2. Mutual Blocked Users fetch
+    const blockedIds = await getBlockedUserIds(req.user!.id);
+
+    // ✅ 3. Agar Current User ne Profile Owner ko Block kiya hai, toh No Posts
+    if (blockedIds.includes(targetUserId)) {
+      return successResponse(res, { 
+        posts: [], 
+        total: 0, 
+        page: Number(page), 
+        limit: Number(limit) 
+      });
+    }
+
+    let query = supabase
       .from('posts')
       .select(`
         *,
         users!inner (id, name, profile_pic_url)
       `, { count: 'exact' })
-      .eq('user_id', userId)
+      .eq('user_id', targetUserId);
+
+    // ✅ 4. Blocked Users ki Posts hatao (Mutual)
+    if (blockedIds.length > 0) {
+      query = query.not('user_id', 'in', `(${blockedIds.join(',')})`);
+    }
+
+    const { data, error, count } = await query
       .order('created_at', { ascending: false })
       .range(from, to);
 
     if (error) throw error;
+
     // ✅ Aspect Ratio + Like Status add karo
     const postsWithStatus = await addLikeStatusToPosts(data, req.user!.id);
     const postsWithRatio = postsWithStatus.map((post: any) => ({
       ...post,
       aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
     }));
+
     successResponse(res, {
       posts: postsWithRatio,
       total: count,

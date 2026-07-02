@@ -465,3 +465,54 @@ export const refreshToken = async (req: Request, res: Response) => {
     res.status(401).json({ message: err.message || 'Invalid or expired refresh token' });
   }
 };
+
+// Reset password using OTP (for forgot password flow)
+export const resetPasswordWithOtp = async (req: Request, res: Response) => {
+  const { email, otp, newPassword } = req.body;
+
+  if (!email || !otp || !newPassword) {
+    return errorResponse(res, 'Email, OTP and new password are required');
+  }
+
+  if (newPassword.length < 8) {
+    return errorResponse(res, 'Password must be at least 8 characters');
+  }
+
+  try {
+    // ✅ 1. OTP Verify करो
+    const isValid = await verifyOTP(email, otp, OtpPurpose.FORGOT);
+    if (!isValid) {
+      return errorResponse(res, 'Invalid or expired OTP');
+    }
+
+    // ✅ 2. User Fetch करो (Supabase Admin)
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .single();
+
+    if (userError || !user) {
+      return errorResponse(res, 'User not found');
+    }
+
+    // ✅ 3. Password Update करो (Admin API)
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      user.id,
+      { password: newPassword }
+    );
+
+    if (updateError) {
+      logger.error('Password update error:', updateError);
+      return errorResponse(res, updateError.message);
+    }
+
+    // ✅ 4. OTP Cleanup (Already handled by verifyOTP, but extra safe)
+    // verifyOTP already deletes the OTP from DB.
+
+    successResponse(res, { message: 'Password reset successfully' });
+  } catch (err) {
+    logger.error('Error in resetPasswordWithOtp:', err);
+    errorResponse(res, 'Server error');
+  }
+};

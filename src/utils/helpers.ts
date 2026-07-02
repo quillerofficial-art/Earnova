@@ -49,3 +49,24 @@ export const addLikeStatusToPosts = async (
     is_liked_by_user: likedPostIds.has(post.id),
   }));
 };
+
+// नया function – blocked users की list return करेगा
+export const getBlockedUserIds = async (userId: string): Promise<string[]> => {
+  // 1️⃣ मैंने किसको Block किया है?
+  const { data: blockedByMe } = await supabaseAdmin
+    .from('blocks')
+    .select('blocked_id')
+    .eq('blocker_id', userId);
+
+  // 2️⃣ किसने मुझे Block किया है?
+  const { data: blockedMe } = await supabaseAdmin
+    .from('blocks')
+    .select('blocker_id')
+    .eq('blocked_id', userId);
+
+  const ids = new Set<string>();
+  (blockedByMe || []).forEach((b: any) => ids.add(b.blocked_id));
+  (blockedMe || []).forEach((b: any) => ids.add(b.blocker_id));
+
+  return Array.from(ids);
+};

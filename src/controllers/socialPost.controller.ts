@@ -10,7 +10,7 @@ import ffmpeg from 'fluent-ffmpeg';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs/promises';
 import path from 'path';
-import { addLikeStatusToPosts } from '../utils/helpers';
+import { addLikeStatusToPosts, getBlockedUserIds } from '../utils/helpers';
 
 
 const getAuthSupabase = (token: string) => {
@@ -196,12 +196,20 @@ export const getFeed = async (req: Request, res: Response) => {
   const to = from + Number(limit) - 1;
 
   try {
+    // ✅ 1. Mutual Blocked Users fetch (NEW)
+    const blockedIds = await getBlockedUserIds(req.user!.id);
+
     let query = supabase
       .from('posts')
       .select(`
         *,
         users!inner (id, name, profile_pic_url)
       `, { count: 'exact' });
+
+    // ✅ 2. Blocked Users ki Posts hatao (NEW)
+    if (blockedIds.length > 0) {
+      query = query.not('user_id', 'in', `(${blockedIds.join(',')})`);
+    }
 
     // ✅ Single category filter
     if (category && typeof category === 'string') {
@@ -231,7 +239,7 @@ export const getFeed = async (req: Request, res: Response) => {
     const postsWithStatus = await addLikeStatusToPosts(data, req.user!.id);
     const postsWithRatio = postsWithStatus.map((post: any) => ({
       ...post,
-     aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
+      aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
     }));
 
     successResponse(res, {
@@ -250,6 +258,22 @@ export const toggleLike = async (req: Request, res: Response) => {
   const { id: postId } = req.params;
   const userId = req.user!.id;
   try {
+    // ✅ 1. Check if post exists and get owner (NEW)
+    const { data: post, error: postError } = await supabase
+      .from('posts')
+      .select('user_id')
+      .eq('id', postId)
+      .single();
+    if (postError || !post) {
+      return errorResponse(res, 'Post not found', 404);
+    }
+
+    // ✅ 2. MUTUAL BLOCK CHECK – Interaction Prevention (NEW)
+    const blockedIds = await getBlockedUserIds(userId);
+    if (blockedIds.includes(post.user_id)) {
+      return errorResponse(res, 'You cannot interact with this user', 403);
+    }
+
     const { data: existing } = await supabase
       .from('likes')
       .select('id')
@@ -258,50 +282,68 @@ export const toggleLike = async (req: Request, res: Response) => {
       .maybeSingle();
 
     if (existing) {
-      // Unlike
+      // ✅ UNLIKE
       await supabase.from('likes').delete().eq('id', existing.id);
       await supabase.rpc('decrement_post_likes', { post_id: postId });
       successResponse(res, { liked: false });
     } else {
-      // Like
+      // ✅ LIKE
       await supabase.from('likes').insert({ post_id: postId, user_id: userId });
       await supabase.rpc('increment_post_likes', { post_id: postId });
 
-      // 🚀 Send push notification to post owner (if not self)
-      const { data: post } = await supabase
-        .from('posts')
-        .select('user_id')
-        .eq('id', postId)
-        .single();
+      // 🚀 Send push notification to post owner (if not self and not blocked)
+      // Blocked check already done above, but double-check
       if (post && post.user_id !== userId) {
-        // Get liker's name
         const { data: liker } = await supabase
           .from('users')
           .select('name')
           .eq('id', userId)
           .single();
         const name = liker?.name || 'Someone';
-        await sendPushNotification(post.user_id, 'New Like', `${name} liked your post`);
+        const message = `${name} liked your post`;
 
-        // ✅ In-app notification for like (using supabaseAdmin to bypass RLS)
-        try {
-          const { data: notif } = await supabaseAdmin
-            .from('notifications')
-            .insert({
-              admin_id: null,
-              title: 'New Like',
-              message: `${name} liked your post`
-            })
-            .select()
-            .single();
+        // ✅ COOLDOWN CHECK – 1 hour
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const { data: recentNotif, error: checkError } = await supabaseAdmin
+          .from('notifications')
+          .select('id')
+          .eq('title', 'New Like')
+          .eq('message', message)
+          .eq('admin_id', null)
+          .gte('created_at', oneHourAgo)
+          .limit(1);
 
-          if (notif) {
-            await supabaseAdmin
-              .from('user_notifications')
-              .insert({ user_id: post.user_id, notification_id: notif.id });
+        if (checkError) {
+          console.error('Error checking cooldown:', checkError);
+        }
+
+        if (!recentNotif || recentNotif.length === 0) {
+          // Push Notification
+          await sendPushNotification(post.user_id, 'New Like', message);
+
+          // In-app Notification
+          try {
+            const { data: notif } = await supabaseAdmin
+              .from('notifications')
+              .insert({
+                admin_id: null,
+                title: 'New Like',
+                message: message,
+              })
+              .select()
+              .single();
+
+            if (notif) {
+              await supabaseAdmin
+                .from('user_notifications')
+                .insert({ user_id: post.user_id, notification_id: notif.id });
+            }
+            console.log(`✅ Notification SENT for ${name} liking post ${postId}`);
+          } catch (notifErr) {
+            logger.error('Error inserting in-app like notification:', notifErr);
           }
-        } catch (notifErr) {
-          logger.error('Error inserting in-app like notification:', notifErr);
+        } else {
+          console.log(`⏳ Notification SKIPPED (cooldown) for ${name} liking post ${postId}`);
         }
       }
       successResponse(res, { liked: true });
@@ -321,6 +363,22 @@ export const addComment = async (req: Request, res: Response) => {
   const supabaseAuth = getAuthSupabase(token);
 
   try {
+    // ✅ 1. Check if post exists and get owner (NEW)
+    const { data: post, error: postError } = await supabaseAuth
+      .from('posts')
+      .select('user_id')
+      .eq('id', postId)
+      .single();
+    if (postError || !post) {
+      return errorResponse(res, 'Post not found', 404);
+    }
+
+    // ✅ 2. MUTUAL BLOCK CHECK – Interaction Prevention (NEW)
+    const blockedIds = await getBlockedUserIds(userId);
+    if (blockedIds.includes(post.user_id)) {
+      return errorResponse(res, 'You cannot interact with this user', 403);
+    }
+
     if (parentCommentId) {
       const { data: parent } = await supabaseAuth
         .from('comments')
@@ -345,12 +403,7 @@ export const addComment = async (req: Request, res: Response) => {
 
     await supabaseAuth.rpc('increment_post_comments', { post_id: postId });
 
-    // 🚀 Send push notification to post owner (if not self)
-    const { data: post } = await supabaseAuth
-      .from('posts')
-      .select('user_id')
-      .eq('id', postId)
-      .single();
+    // ✅ 3. Send push notification to post owner (Block check already done, so safe)
     if (post && post.user_id !== userId) {
       const { data: commenter } = await supabaseAuth
         .from('users')
@@ -392,12 +445,27 @@ export const addComment = async (req: Request, res: Response) => {
 export const getComments = async (req: Request, res: Response) => {
   const { id: postId } = req.params;
   try {
-    const { data, error } = await supabase
+    // ✅ 1. Mutual Blocked Users fetch (NEW)
+    const blockedIds = await getBlockedUserIds(req.user!.id);
+
+    let query = supabase
       .from('comments')
       .select(`*, users!inner (id, name, profile_pic_url)`)
-      .eq('post_id', postId)
-      .order('created_at', { ascending: true });
+      .eq('post_id', postId);
+
+    // ✅ 2. Blocked Users ke Comments hatao (NEW)
+    if (blockedIds.length > 0) {
+      query = query.not('user_id', 'in', `(${blockedIds.join(',')})`);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: true });
     if (error) throw error;
+
+    // ✅ 3. Agar data empty hai toh empty tree return karo
+    if (!data || data.length === 0) {
+      return successResponse(res, []);
+    }
+
     // Build nested tree (2 levels)
     const map = new Map();
     const roots: any[] = [];
@@ -449,7 +517,7 @@ export const deletePost = async (req: Request, res: Response) => {
 };
 
 
-// Add this function after existing ones
+// Get posts of any user (by userId)
 export const getUserPosts = async (req: Request, res: Response) => {
   const { userId } = req.params;
   const { page = 1, limit = 10 } = req.query;
@@ -457,13 +525,36 @@ export const getUserPosts = async (req: Request, res: Response) => {
   const to = from + Number(limit) - 1;
 
   try {
-    const { data, error, count } = await supabase
+    // ✅ 1. userId ko string mein convert karo (FIX)
+    const targetUserId = Array.isArray(userId) ? userId[0] : userId;
+
+    // ✅ 2. Mutual Blocked Users fetch
+    const blockedIds = await getBlockedUserIds(req.user!.id);
+
+    // ✅ 3. Agar Current User ne Profile Owner ko Block kiya hai, toh No Posts
+    if (blockedIds.includes(targetUserId)) {
+      return successResponse(res, { 
+        posts: [], 
+        total: 0, 
+        page: Number(page), 
+        limit: Number(limit) 
+      });
+    }
+
+    let query = supabase
       .from('posts')
       .select(`
         *,
         users!inner (id, name, profile_pic_url)
       `, { count: 'exact' })
-      .eq('user_id', userId)
+      .eq('user_id', targetUserId);
+
+    // ✅ 4. Blocked Users ki Posts hatao (Mutual)
+    if (blockedIds.length > 0) {
+      query = query.not('user_id', 'in', `(${blockedIds.join(',')})`);
+    }
+
+    const { data, error, count } = await query
       .order('created_at', { ascending: false })
       .range(from, to);
 
@@ -472,11 +563,16 @@ export const getUserPosts = async (req: Request, res: Response) => {
     // ✅ Aspect Ratio + Like Status add karo
     const postsWithStatus = await addLikeStatusToPosts(data, req.user!.id);
     const postsWithRatio = postsWithStatus.map((post: any) => ({
-     ...post,
-     aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
+      ...post,
+      aspectRatio: post.width && post.height ? Number((post.width / post.height).toFixed(4)) : null
     }));
 
-    successResponse(res, { posts: postsWithRatio, total: count, page: Number(page), limit: Number(limit) });
+    successResponse(res, { 
+      posts: postsWithRatio, 
+      total: count, 
+      page: Number(page), 
+      limit: Number(limit) 
+    });
   } catch (err) {
     logger.error('Error in getUserPosts:', err);
     errorResponse(res, 'Failed to fetch user posts');
@@ -489,13 +585,23 @@ export const getReels = async (req: Request, res: Response) => {
   const to = from + Number(limit) - 1;
 
   try {
-    const { data, error, count } = await supabase
+    // ✅ 1. Mutual Blocked Users fetch (NEW)
+    const blockedIds = await getBlockedUserIds(req.user!.id);
+
+    let query = supabase
       .from('posts')
       .select(`
         *,
         users!inner (id, name, profile_pic_url)
       `, { count: 'exact' })
-      .eq('media_type', 'video')   // ✅ केवल Video
+      .eq('media_type', 'video');   // ✅ केवल Video
+
+    // ✅ 2. Blocked Users ki Videos hatao (NEW)
+    if (blockedIds.length > 0) {
+      query = query.not('user_id', 'in', `(${blockedIds.join(',')})`);
+    }
+
+    const { data, error, count } = await query
       .order('created_at', { ascending: false })
       .range(from, to);
 
