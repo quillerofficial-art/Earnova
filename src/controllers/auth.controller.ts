@@ -29,7 +29,8 @@ export const verifyOtp = async (req: Request, res: Response) => {
 export const signup = async (req: Request, res: Response) => {
   const { email, password, name, upi_id, mobile_number, token } = req.body;
 
-  if (!email || !password || !name || !token) {
+  // ✅ Mandatory Fields (Token hata diya)
+  if (!email || !password || !name) {
     return res.status(400).json({ message: 'Missing required fields' });
   }
 
@@ -43,44 +44,14 @@ export const signup = async (req: Request, res: Response) => {
   }
 
   let userId: string | null = null;
+  
+  // ✅ Default null values (Root user ke liye)
+  let sponsorId: string | null = null;
+  let parentId: string | null = null;
+  let position: number | null = null;
 
   try {
-    // 1. Validate invitation token
-    const { data: invToken, error: tokenError } = await supabaseAdmin
-      .from('invitation_tokens')
-      .select('*')
-      .eq('token', token)
-      .eq('used', false)
-      .gt('expires_at', new Date().toISOString())
-      .single();
-
-    if (tokenError || !invToken) {
-      return errorResponse(res, 'Invalid or expired invitation token');
-    }
-
-    // 2. Check if position is still vacant (using child_ids and position)
-    const { data: parent, error: parentError } = await supabaseAdmin
-      .from('users')
-      .select('child_ids')
-      .eq('id', invToken.parent_id)
-      .single();
-
-    if (parentError || !parent) {
-      return res.status(400).json({ message: 'Parent node not found' });
-    }
-
-    // Check if this position is already taken (by querying users with same parent_id and position)
-    const { data: existing } = await supabaseAdmin
-      .from('users')
-      .select('id')
-      .eq('parent_id', invToken.parent_id)
-      .eq('position', invToken.position)
-      .maybeSingle();
-    if (existing) {
-      return errorResponse(res, 'Position already occupied');
-    }
-
-    // 3. Check if email is verified
+    // 1️⃣ Email Verification Check
     const { data: verif, error: verifError } = await supabaseAdmin
       .from('email_verifications')
       .select('verified, expires_at')
@@ -91,7 +62,49 @@ export const signup = async (req: Request, res: Response) => {
       return errorResponse(res, 'Email not verified. Please request OTP and verify first.');
     }
 
-    // 4. Create user in Supabase Auth
+    // 2️⃣ Token Validation (Sirf tab jab token diya ho)
+    if (token) {
+      const { data: invToken, error: tokenError } = await supabaseAdmin
+        .from('invitation_tokens')
+        .select('*')
+        .eq('token', token)
+        .eq('used', false)
+        .gt('expires_at', new Date().toISOString())
+        .single();
+
+      if (tokenError || !invToken) {
+        return errorResponse(res, 'Invalid or expired invitation token');
+      }
+
+      // Check position vacancy
+      const { data: parent, error: parentError } = await supabaseAdmin
+        .from('users')
+        .select('child_ids')
+        .eq('id', invToken.parent_id)
+        .single();
+
+      if (parentError || !parent) {
+        return res.status(400).json({ message: 'Parent node not found' });
+      }
+
+      const { data: existing } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('parent_id', invToken.parent_id)
+        .eq('position', invToken.position)
+        .maybeSingle();
+      if (existing) {
+        return errorResponse(res, 'Position already occupied');
+      }
+
+      // Token data assign
+      sponsorId = invToken.sponsor_id;
+      parentId = invToken.parent_id;
+      position = invToken.position;
+    }
+    // ✅ Agar token nahi diya, toh sponsorId/parentId/position null hi rahenge (Root User)
+
+    // 3️⃣ Create user in Supabase Auth
     const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -104,7 +117,7 @@ export const signup = async (req: Request, res: Response) => {
 
     userId = authUser.user.id;
 
-    // 5. Insert into public.users
+    // 4️⃣ Insert into public.users
     const referralCode = generateReferralCode();
     const { error: dbError } = await supabaseAdmin
       .from('users')
@@ -115,94 +128,84 @@ export const signup = async (req: Request, res: Response) => {
         upi_id: upi_id || null,
         mobile_number: mobile_number || null,
         referral_code: referralCode,
-        sponsor_id: invToken.sponsor_id,
-        parent_id: invToken.parent_id,
-        position: invToken.position,
+        sponsor_id: sponsorId,    // ✅ Nullable
+        parent_id: parentId,      // ✅ Nullable
+        position: position,       // ✅ Nullable
+        level: 0,                 // ✅ Root ka level 0
+        child_ids: [],
+        total_downline: 0,
+        subscription_status: false,
+        is_deleted: false,
+        streak: 0,
       });
 
     if (dbError) throw dbError;
 
-    // 6. Update parent's child_ids array
-    const { data: parentData } = await supabaseAdmin
-      .from('users')
-      .select('child_ids')
-      .eq('id', invToken.parent_id)
-      .single();
-    let newChildIds = parentData?.child_ids || [];
-    newChildIds.push(userId);
-    await supabaseAdmin
-      .from('users')
-      .update({ child_ids: newChildIds })
-      .eq('id', invToken.parent_id);
+    // 5️⃣ Parent Update & RPC (Sirf tab jab token diya ho)
+    if (token && parentId) {
+      // Update parent's child_ids
+      const { data: parentData } = await supabaseAdmin
+        .from('users')
+        .select('child_ids')
+        .eq('id', parentId)
+        .single();
+      let newChildIds = parentData?.child_ids || [];
+      newChildIds.push(userId);
+      await supabaseAdmin
+        .from('users')
+        .update({ child_ids: newChildIds })
+        .eq('id', parentId);
 
-    // 7. Mark token as used
-    await supabaseAdmin
-      .from('invitation_tokens')
-      .update({ used: true })
-      .eq('id', invToken.id);
+      // Mark token as used
+      await supabaseAdmin
+        .from('invitation_tokens')
+        .update({ used: true })
+        .eq('token', token);
 
-    // 8. Recalculate downline for ancestors (using new RPC)
-    await supabaseAdmin.rpc('recalc_user_and_ancestors_v5', { target_id: userId });
+      // Recalculate downline for ancestors
+      await supabaseAdmin.rpc('recalc_user_and_ancestors_v5', { target_id: userId });
+    }
 
-    // 9. Clean up email verification
+    // 6️⃣ Clean up email verification
     await supabaseAdmin.from('email_verifications').delete().eq('email', email);
 
-    // पुरानी लाइन (हटाएँ):
-// await sendPushNotification(userId, 'Welcome to Poster! 🎉', 'Thank you for joining. Start sharing and earning!');
+    // 7️⃣ Welcome Notification
+    await sendPushNotification(userId, '🎉 Welcome to the Poster family!', 
+      `Welcome to the family! 🎉\n\n` +
+      `Poster isn't just another social media app—it's a social communication platform that actually pays you for your daily creativity!\n\n` +
+      `The formula is simple: Post daily, level up, and get paid every month.\n\n` +
+      `💰 Level & Payout Breakdown:\n` +
+      `• Level 1: Lifetime free subscription\n` +
+      `• Level 2: ₹125/month\n` +
+      `• Level 3: ₹600/month\n` +
+      `• Level 4: ₹3,100/month\n` +
+      `• Level 5: ₹15,000/month\n\n` +
+      `🚀 How to Level Up & Unlock Free Subscriptions?\n` +
+      `There are 5 tasks in total. Complete each task to increase your level by 1!\n\n` +
+      `🔹 Your First Mission (Task 1): Unlock Level 1 & Lifetime Free Access\n` +
+      `▸ Goal: Refer 5 friends.\n` +
+      `▸ Condition: They must post their very first post on the app.\n` +
+      `▸ Deadline: Within 7 days of subscribing.\n` +
+      `▸ Reward: Free Lifetime Subscription to Poster!\n\n` +
+      `Ready to turn your posts into payouts? Start sharing and posting today! 🚀`
+    );
 
-// नई लाइन (डालें):
-await sendPushNotification(userId, '🎉 Welcome to the Poster family!', 
-  `Welcome to the family! 🎉\n\n` +
-  `Poster isn't just another social media app—it's a social communication platform that actually pays you for your daily creativity!\n\n` +
-  `The formula is simple: Post daily, level up, and get paid every month.\n\n` +
-  `💰 Level & Payout Breakdown:\n` +
-  `• Level 1: Lifetime free subscription\n` +
-  `• Level 2: ₹125/month\n` +
-  `• Level 3: ₹600/month\n` +
-  `• Level 4: ₹3,100/month\n` +
-  `• Level 5: ₹15,000/month\n\n` +
-  `🚀 How to Level Up & Unlock Free Subscriptions?\n` +
-  `There are 5 tasks in total. Complete each task to increase your level by 1!\n\n` +
-  `🔹 Your First Mission (Task 1): Unlock Level 1 & Lifetime Free Access\n` +
-  `▸ Goal: Refer 5 friends.\n` +
-  `▸ Condition: They must post their very first post on the app.\n` +
-  `▸ Deadline: Within 7 days of subscribing.\n` +
-  `▸ Reward: Free Lifetime Subscription to Poster!\n\n` +
-  `Ready to turn your posts into payouts? Start sharing and posting today! 🚀`
-);
+    // In-app welcome notification
+    const { data: notif, error: notifError } = await supabaseAdmin
+      .from('notifications')
+      .insert({
+        admin_id: null,
+        title: 'Welcome to the family! 🎉',
+        message: `Poster isn't just another social media app—it’s a social communication platform that actually pays you for your daily creativity!\n\nThe formula is simple: Post daily, level up, and get paid every month.\n\n💰 The Level & Payout Breakdown\nLevel 1: Lifetime Free Subscription\nLevel 2: ₹125/month\nLevel 3: ₹625/month\nLevel 4: ₹3,125/month\nLevel 5: ₹15,000/month\n\n🚀 How to Level Up & Unlock Free Subscriptions?\nThere are 5 tasks in total. Every time you complete a task, your level increases by 1!\n\nYour First Mission (Task 1): Unlock Level 1 & Lifetime Free Access\nThe Goal: Refer 5 friends.\nThe Catch: Make sure they post their very first post on the app.\nThe Deadline: Complete this within your first 7 days of subscribing.\nThe Reward: Reaching Level 1 unlocks a Free Lifetime Subscription to the app!\n\nReady to turn your posts into payouts? Start sharing and posting today!`
+      })
+      .select()
+      .single();
 
-// ✅ In-app welcome notification
-const { data: notif, error: notifError } = await supabaseAdmin
-  .from('notifications')
-  .insert({
-    admin_id: null, // system notification
-    title: 'Welcome to the family! 🎉',
-    message: `Poster isn't just another social media app—it’s a social communication platform that actually pays you for your daily creativity!
-The formula is simple: Post daily, level up, and get paid every month.
-💰 The Level & Payout Breakdown
-Level Monthly Earnings
-Level 1 (Life Time Free Subscription)
-Level 2 ₹125
-Level 3 ₹625
-Level 4 ₹3,125
-Level 5 ₹15,000
-🚀 How to Level Up & Unlock Free Subscriptions
-There are 5 tasks in total. Every time you complete a task, your level increases by 1!
-Your First Mission (Task 1): Unlock Level 1 & Lifetime Free Access
-The Goal: Refer 5 friends.
-The Catch: Make sure they post their very first post on the app.
-The Deadline: Complete this within your first 7 days of subscribing.
-The Reward: Reaching Level 1 unlocks a Free Lifetime Subscription to the app!
-Ready to turn your posts into payouts? Start sharing and start posting today!`
-  })
-  .select()
-  .single();
-
-if (!notifError && notif) {
-  await supabaseAdmin
-    .from('user_notifications')
-    .insert({ user_id: userId, notification_id: notif.id });
-}
+    if (!notifError && notif) {
+      await supabaseAdmin
+        .from('user_notifications')
+        .insert({ user_id: userId, notification_id: notif.id });
+    }
 
     successResponse(res, { message: 'User created successfully', userId });
   } catch (err) {

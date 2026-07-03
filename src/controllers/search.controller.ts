@@ -48,7 +48,7 @@ export const searchPosts = async (req: Request, res: Response) => {
 
     // ✅ Category filter
     if (category && typeof category === 'string') {
-      const allowedCategories = ['entertainment', 'news', 'books', 'shopping'];
+      const allowedCategories = ['entertainment', 'news', 'books', 'shopping', 'course'];
       if (!allowedCategories.includes(category)) {
         return errorResponse(res, 'Invalid category');
       }

@@ -7,7 +7,7 @@ export const signupSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   upi_id: z.string().optional(),
   mobile_number: z.string().regex(/^[0-9]{10}$/, 'Invalid mobile number').optional(),
-  token: z.string().min(1, 'Token is required'),
+  token: z.string().optional(),
 })
 
 export const loginSchema = z.object({

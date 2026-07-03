@@ -27,7 +27,7 @@ export const createPost = async (req: Request, res: Response) => {
   const mediaFile = req.file;
   if (!mediaFile) return errorResponse(res, 'Media (image or video) is required');
 
-  const allowedCategories = ['entertainment', 'news', 'books', 'shopping'];
+  const allowedCategories = ['entertainment', 'news', 'books', 'shopping', 'course'];
   if (category && !allowedCategories.includes(category)) {
     return errorResponse(res, `Invalid category. Allowed: ${allowedCategories.join(', ')}`);
   }
@@ -213,7 +213,7 @@ export const getFeed = async (req: Request, res: Response) => {
 
     // ✅ Single category filter
     if (category && typeof category === 'string') {
-      const allowedCategories = ['entertainment', 'news', 'books', 'shopping'];
+      const allowedCategories = ['entertainment', 'news', 'books', 'shopping', 'course'];
       if (!allowedCategories.includes(category)) {
         return errorResponse(res, 'Invalid category');
       }
