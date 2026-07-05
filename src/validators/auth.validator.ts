@@ -5,9 +5,9 @@ export const signupSchema = z.object({
   email: z.string().email('Invalid email format'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   name: z.string().min(2, 'Name must be at least 2 characters'),
-  upi_id: z.string().optional(),
-  mobile_number: z.string().regex(/^[0-9]{10}$/, 'Invalid mobile number').optional(),
-  token: z.string().optional(),
+  upi_id: z.string().optional().or(z.literal('')).transform(val => val || null),
+  mobile_number: z.string().regex(/^[0-9]{10}$/, 'Invalid mobile number').optional().or(z.literal('')).transform(val => val || null),
+  token: z.string().optional().or(z.literal('')).transform(val => val || null),
 })
 
 export const loginSchema = z.object({
