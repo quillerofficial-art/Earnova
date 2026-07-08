@@ -17,6 +17,7 @@ import { supabase, supabaseAdmin } from './config/supabase';
 import profileRoutes from './routes/profile.routes';
 import searchRoutes from './routes/search.routes';
 import socialPostRoutes from './routes/socialPost.routes';
+import googlePlayRoutes from './routes/googlePlay.routes';
 import notificationRoutes from './routes/notification.routes';
 import { initFirebase } from './utils/notifications';
 import { sendPushNotification } from './utils/notifications';
@@ -72,6 +73,7 @@ app.use('/api/user', userRoutes)
 app.use('/api/tree', treeRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/payment', paymentRoutes)
+app.use('/api/google-play', googlePlayRoutes);
 app.use('/api/posts', postRoutes)
 app.use('/api/plans', planRoutes)
 app.use('/api/products', productRoutes)
