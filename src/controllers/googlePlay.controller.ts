@@ -20,10 +20,10 @@ export const verifyGooglePurchase = async (req: Request, res: Response) => {
       return errorResponse(res, 'Invalid purchase token');
     }
 
-    // 2️⃣ Acknowledge (consume) the purchase (Mock/Real)
-    await acknowledgePurchase(productId, purchaseToken);
+    // 2️⃣ Acknowledge (consume) the purchase - ✅ IS_SUBSCRIPTION PASS KARO
+    await acknowledgePurchase(productId, purchaseToken, isSubscription);
 
-    // 3️⃣ Update user subscription (Agar subscription hai toh)
+    // 3️⃣ Update user subscription
     let expiryDate = null;
     if (isSubscription && result.expiryTime) {
       expiryDate = new Date(Number(result.expiryTime)).toISOString();
@@ -36,7 +36,7 @@ export const verifyGooglePurchase = async (req: Request, res: Response) => {
         })
         .eq('id', userId);
 
-      logger.info(`✅ User ${userId} subscription updated via Google Play (Mock). Expires: ${expiryDate}`);
+      logger.info(`✅ User ${userId} subscription updated via Google Play. Expires: ${expiryDate}`);
     }
 
     // 4️⃣ Log transaction
