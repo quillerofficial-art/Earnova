@@ -202,6 +202,27 @@ cron.schedule('0 9 * * *', async () => {
   }
 });
 
+// 🌙 हर रात 1:00 बजे (UTC) – Expired Users की status false करो
+cron.schedule('0 1 * * *', async () => {
+  console.log('🔄 Running subscription expiry sync...');
+  try {
+    const now = new Date().toISOString();
+    const { data, error, count } = await supabaseAdmin
+      .from('users')
+      .update({ subscription_status: false })
+      .eq('subscription_status', true)
+      .lt('subscription_expiry', now);
+
+    if (error) {
+      console.error('❌ Subscription expiry sync failed:', error);
+    } else {
+      console.log(`✅ Subscription sync completed. ${count || 0} users deactivated.`);
+    }
+  } catch (err) {
+    console.error('❌ Cron job error:', err);
+  }
+});
+
 
 // Start server
 app.listen(PORT, () => {
