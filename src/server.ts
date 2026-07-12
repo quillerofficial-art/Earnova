@@ -166,15 +166,18 @@ cron.schedule('0 0 * * *', async () => {
 cron.schedule('0 9 * * *', async () => {
   console.log('Running subscription reminder check...');
   try {
-    // Users who are either:
-    // 1) not subscribed (subscription_status = false) AND (expiry passed OR last_post_date older than 4 days)
-    // 2) reminder_sent = false
+    const fourDaysAgo = new Date();
+    fourDaysAgo.setDate(fourDaysAgo.getDate() - 4);
+    const fourDaysAgoISO = fourDaysAgo.toISOString();
+
+    // ✅ ONLY Level 0 users need reminders (Level 1+ have lifetime free)
     const { data: users, error } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('is_deleted', false)
       .eq('reminder_sent', false)
-      .or(`subscription_status.eq.false,and(subscription_expiry.lt.${new Date().toISOString()}),and(last_post_date.lt.${new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString()},subscription_status.eq.false)`);
+      .eq('level', 0) // 🔥 ये line add ki hai - sirf Level 0 walo ko reminder
+      .or(`subscription_status.eq.false,subscription_expiry.lt.${new Date().toISOString()},last_post_date.lt.${fourDaysAgoISO}`);
 
     if (error) {
       console.error('Reminder fetch error:', error);
@@ -203,6 +206,7 @@ cron.schedule('0 9 * * *', async () => {
 });
 
 // 🌙 हर रात 1:00 बजे (UTC) – Expired Users की status false करो
+// 🌙 हर रात 1:00 बजे (UTC) – Expired Users ki status false करो (Only Level 0)
 cron.schedule('0 1 * * *', async () => {
   console.log('🔄 Running subscription expiry sync...');
   try {
@@ -211,12 +215,13 @@ cron.schedule('0 1 * * *', async () => {
       .from('users')
       .update({ subscription_status: false })
       .eq('subscription_status', true)
+      .eq('level', 0) // ✅ Sirf Level 0 users ko update karo
       .lt('subscription_expiry', now);
 
     if (error) {
       console.error('❌ Subscription expiry sync failed:', error);
     } else {
-      console.log(`✅ Subscription sync completed. ${count || 0} users deactivated.`);
+      console.log(`✅ Subscription sync completed. ${count || 0} Level 0 users deactivated.`);
     }
   } catch (err) {
     console.error('❌ Cron job error:', err);
