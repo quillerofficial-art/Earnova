@@ -13,6 +13,24 @@ export const verifyGooglePurchase = async (req: Request, res: Response) => {
   }
 
   try {
+
+    // ✅ FIX 1: DUPLICATE TOKEN CHECK (Network Retry / Double Click से बचाओ)
+    const { data: existingTx } = await supabaseAdmin
+      .from('payment_transactions')
+      .select('id')
+      .eq('purchase_token', purchaseToken)
+      .eq('product_id', productId)
+      .maybeSingle();
+
+    if (existingTx) {
+      logger.info(`⏳ Duplicate purchase token ignored: ${purchaseToken}`);
+      return successResponse(res, { 
+        message: 'Purchase already processed', 
+        isValid: true,
+        alreadyProcessed: true 
+      });
+    }
+
     // 1️⃣ Verify purchase
     const result = await verifyPurchase(productId, purchaseToken, isSubscription);
 

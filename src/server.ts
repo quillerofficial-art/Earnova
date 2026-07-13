@@ -17,6 +17,7 @@ import { supabase, supabaseAdmin } from './config/supabase';
 import profileRoutes from './routes/profile.routes';
 import searchRoutes from './routes/search.routes';
 import socialPostRoutes from './routes/socialPost.routes';
+import { verifyPurchase } from './services/googlePlay.service';
 import googlePlayRoutes from './routes/googlePlay.routes';
 import notificationRoutes from './routes/notification.routes';
 import { initFirebase } from './utils/notifications';
@@ -225,6 +226,82 @@ cron.schedule('0 1 * * *', async () => {
     }
   } catch (err) {
     console.error('❌ Cron job error:', err);
+  }
+});
+
+// 🔄 हर रविवार रात 3:00 बजे (UTC) – Google Play Subscriptions Re-validate करो
+cron.schedule('0 3 * * 0', async () => {
+  console.log('🔄 [WEEKLY] Starting Google Play subscription revalidation...');
+  try {
+    // 1. सिर्फ Level 0 के Active Google Play Users fetch करो (जिनकी expiry future में है)
+    const { data: users, error } = await supabaseAdmin
+      .from('users')
+      .select('id, subscription_expiry')
+      .eq('subscription_status', true)
+      .eq('level', 0)
+      .gt('subscription_expiry', new Date().toISOString());
+
+    if (error) throw error;
+    if (!users || users.length === 0) {
+      console.log('✅ No active Google Play subscriptions to revalidate.');
+      return;
+    }
+
+    console.log(`🔄 Validating ${users.length} active subscriptions with Google API...`);
+    let renewedCount = 0;
+    let deactivatedCount = 0;
+
+    for (const user of users) {
+      try {
+        // 2. उस User की Latest Google Play Transaction fetch करो
+        const { data: tx } = await supabaseAdmin
+          .from('payment_transactions')
+          .select('product_id, purchase_token')
+          .eq('user_id', user.id)
+          .eq('platform', 'google_play')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!tx || !tx.purchase_token) continue;
+
+        // 3. Google API से Real-time Status (Expiry) लाओ
+        const result = await verifyPurchase(tx.product_id, tx.purchase_token, true);
+        
+        if (!result.isValid) {
+          // अगर Google ने Invalid बताया (Cancel/Refund) → Deactivate करो
+          await supabaseAdmin
+            .from('users')
+            .update({ subscription_status: false })
+            .eq('id', user.id);
+          deactivatedCount++;
+          console.log(`❌ Deactivated user ${user.id} (Invalid/Cancelled subscription).`);
+          continue;
+        }
+
+        if (result.expiryTime) {
+          const googleExpiry = new Date(Number(result.expiryTime));
+          const dbExpiry = new Date(user.subscription_expiry);
+
+          // 4. अगर Google Expiry DB Expiry से ज्यादा है → Auto-Renew हुआ है → Update करो
+          if (googleExpiry > dbExpiry) {
+            await supabaseAdmin
+              .from('users')
+              .update({ subscription_expiry: googleExpiry.toISOString() })
+              .eq('id', user.id);
+            renewedCount++;
+            console.log(`✅ Renewed expiry for user ${user.id} to ${googleExpiry.toISOString()}`);
+          }
+        }
+      } catch (err) {
+        console.error(`❌ Error processing user ${user.id}:`, err);
+      }
+    }
+
+    console.log(`✅ [WEEKLY] Revalidation complete. Renewed: ${renewedCount}, Deactivated: ${deactivatedCount}`);
+
+  } catch (err) {
+    console.error('❌ Weekly revalidation cron error:', err);
   }
 });
 
