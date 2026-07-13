@@ -60,7 +60,10 @@ const verifyRealPurchase = async (productId: string, purchaseToken: string, isSu
     const data = response.data;
     // Subscription: paymentState 1 = Paid, 2 = Pending, 3 = Free trial
     // Product: purchaseState 0 = Purchased, 1 = Canceled, 2 = Pending
-    const isValid = isSubscription ? data.paymentState === 1 : data.purchaseState === 0;
+    // ✅ Pending (2) bhi valid maano (Test Payments + Slow Network ke liye)
+    const isValid = isSubscription 
+      ? (data.paymentState === 1 || data.paymentState === 2) 
+      : data.purchaseState === 0;
 
     return {
       isValid,
