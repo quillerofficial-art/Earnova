@@ -285,3 +285,44 @@ export const getUserPostsProfile = async (req: Request, res: Response) => {
     errorResponse(res, 'Failed to fetch posts');
   }
 };
+
+// Get user by ID (for other users' profiles)
+export const getUserById = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, email, profile_pic_url, level, subscription_status, subscription_expiry, created_at, mobile_number')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) {
+      return errorResponse(res, 'User not found');
+    }
+
+    // ✅ REAL-TIME SUBSCRIPTION STATUS CHECK
+    let actualStatus = false;
+    let userStatus = 'inactive';
+
+    if (data.level >= 1) {
+      actualStatus = true;
+      userStatus = 'active';
+      data.subscription_expiry = null;
+    } else {
+      const now = new Date();
+      const expiry = data.subscription_expiry ? new Date(data.subscription_expiry) : null;
+      actualStatus = data.subscription_status === true && (expiry === null || expiry > now);
+      userStatus = actualStatus ? 'active' : 'inactive';
+    }
+
+    data.subscription_status = actualStatus;
+
+    successResponse(res, {
+      ...data,
+      status: userStatus,
+    });
+  } catch (err) {
+    logger.error('Error in getUserById:', { error: err, userId: req.user?.id });
+    errorResponse(res, 'Server error');
+  }
+};
