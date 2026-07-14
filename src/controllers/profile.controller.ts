@@ -35,10 +35,6 @@ export const getMyProfile = async (req: Request, res: Response) => {
     // ✅ Override DB status with real-time status
     user.subscription_status = actualStatus;
 
-    // 🔥 YEH 2 LINES DAALO (successResponse se pehle)
-    console.log('🕐 SERVER UTC TIME:', new Date().toISOString());
-    console.log('📅 EXPIRY UTC TIME:', user.subscription_expiry);
-
     successResponse(res, { ...user, total_posts: totalPosts, inactive_downline_count: inactiveDownlineCount });
   } catch (err) {
     logger.error('Error in getMyProfile:', err);

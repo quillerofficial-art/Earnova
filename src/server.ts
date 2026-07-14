@@ -17,7 +17,7 @@ import { supabase, supabaseAdmin } from './config/supabase';
 import profileRoutes from './routes/profile.routes';
 import searchRoutes from './routes/search.routes';
 import socialPostRoutes from './routes/socialPost.routes';
-import { verifyPurchase } from './services/googlePlay.service';
+import { verifyPurchase, acknowledgePurchase } from './services/googlePlay.service';
 import googlePlayRoutes from './routes/googlePlay.routes';
 import notificationRoutes from './routes/notification.routes';
 import { initFirebase } from './utils/notifications';
@@ -302,6 +302,64 @@ cron.schedule('0 3 * * 0', async () => {
 
   } catch (err) {
     console.error('❌ Weekly revalidation cron error:', err);
+  }
+});
+
+// 🔄 हर घंटे (0 minute par) – Pending Acknowledgements ko Retry करो
+cron.schedule('0 * * * *', async () => {
+  console.log('🔄 [ACK-RETRY] Checking pending Google Play acknowledgements...');
+  try {
+    // 1. पेंडिंग Transactions ढूंढो (24 घंटे से पुरानी, ताकि fresh transactions को time mile)
+    const { data: pendingTxns, error } = await supabaseAdmin
+      .from('payment_transactions')
+      .select('id, user_id, product_id, purchase_token, type')
+      .eq('platform', 'google_play')
+      .eq('status', 'pending_acknowledgement')
+      .lt('created_at', new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString()); // 1 hour old
+
+    if (error) {
+      console.error('❌ Error fetching pending acknowledgements:', error);
+      return;
+    }
+
+    if (!pendingTxns || pendingTxns.length === 0) {
+      // Silent log (har ghante nahi dikhana chahiye)
+      return;
+    }
+
+    console.log(`🔄 Retrying acknowledge for ${pendingTxns.length} pending transactions...`);
+    let successCount = 0;
+
+    for (const tx of pendingTxns) {
+      try {
+        const isSubscription = tx.type === 'subscription';
+        const ackResult = await acknowledgePurchase(
+          tx.product_id,
+          tx.purchase_token,
+          isSubscription
+        );
+
+        if (ackResult.success) {
+          // ✅ Success: Status update karo
+          await supabaseAdmin
+            .from('payment_transactions')
+            .update({ status: 'verified' })
+            .eq('id', tx.id);
+          successCount++;
+          console.log(`✅ Acknowledge retry SUCCESS for transaction ${tx.id} (user ${tx.user_id})`);
+        } else {
+          // ❌ Fail: Kuch mat karo, agle hour fir try hoga
+          console.log(`⚠️ Acknowledge retry FAILED for transaction ${tx.id}, will retry later.`);
+        }
+      } catch (err) {
+        console.error(`❌ Error retrying transaction ${tx.id}:`, err);
+      }
+    }
+
+    console.log(`✅ [ACK-RETRY] Complete. Success: ${successCount}, Failed: ${pendingTxns.length - successCount}`);
+
+  } catch (err) {
+    console.error('❌ Acknowledge retry cron error:', err);
   }
 });
 
