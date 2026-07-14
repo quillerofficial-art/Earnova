@@ -9,7 +9,6 @@ export const getProfile = async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
 
-    // Fetch user profile
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('id, name, email, upi_id, profile_pic_url, referral_code, sponsor_id, parent_id, total_downline, level, subscription_status, subscription_expiry, mobile_number')
@@ -20,26 +19,35 @@ export const getProfile = async (req: Request, res: Response) => {
       return errorResponse(res, 'User not found');
     }
 
-    // Count total referrals (users who have this user as sponsor)
     const { count: totalReferrals, error: refError } = await supabase
       .from('users')
       .select('*', { count: 'exact', head: true })
       .eq('sponsor_id', userId)
       .eq('is_deleted', false);
-
     if (refError) throw refError;
 
-    // Count inactive users in downline (total_downline with subscription_status = false)
-    // Note: This is not direct from users table; we need to count descendants with subscription_status = false
-    // Let's do a recursive CTE or a separate query
     const { data: inactiveCountData, error: inactiveError } = await supabase.rpc('count_inactive_downline', { user_id: userId });
     if (inactiveError) throw inactiveError;
     const inactiveDownlineCount = inactiveCountData || 0;
 
-    // Compute status string
-    const userStatus = user.subscription_status === true && 
-  (user.subscription_expiry === null || new Date(user.subscription_expiry) > new Date())
-  ? 'active' : 'inactive';
+    // ✅ REAL-TIME SUBSCRIPTION STATUS (Middleware jaisa)
+    let actualStatus = false;
+    let userStatus = 'inactive';
+
+    if (user.level >= 1) {
+      // Level 1+ = Lifetime Free
+      actualStatus = true;
+      userStatus = 'active';
+      user.subscription_expiry = null;
+    } else {
+      const now = new Date();
+      const expiry = user.subscription_expiry ? new Date(user.subscription_expiry) : null;
+      actualStatus = user.subscription_status === true && (expiry === null || expiry > now);
+      userStatus = actualStatus ? 'active' : 'inactive';
+    }
+
+    // ✅ Override DB status
+    user.subscription_status = actualStatus;
 
     successResponse(res, {
       ...user,
@@ -121,29 +129,47 @@ export const markNotificationRead = async (req: Request, res: Response) => {
   }
 }
 
-export const getUserById = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('id, name, email, profile_pic_url, level, subscription_status, subscription_expiry, created_at, mobile_number')
-      .eq('id', id)
-      .single();
+export const getMyProfile = async (req: Request, res: Response) => {
+  const userId = req.user!.id;
 
-    if (error || !data) {
-      return errorResponse(res, 'User not found');
+  try {
+    const { data: user, error } = await supabaseAdmin
+      .from('users')
+      .select('id, name, email, mobile_number, upi_id, profile_pic_url, level, total_downline, subscription_status, subscription_expiry, bio, social_links, streak, last_post_date')
+      .eq('id', userId)
+      .single();
+    if (error) throw error;
+
+    const { count: totalPosts } = await supabaseAdmin
+      .from('posts')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    const { data: inactiveCount } = await supabaseAdmin
+      .rpc('count_inactive_downline', { user_id: userId });
+    const inactiveDownlineCount = inactiveCount || 0;
+
+    // ✅ REAL-TIME SUBSCRIPTION STATUS
+    let actualStatus = false;
+    if (user.level >= 1) {
+      actualStatus = true;
+      user.subscription_expiry = null;
+    } else {
+      const now = new Date();
+      const expiry = user.subscription_expiry ? new Date(user.subscription_expiry) : null;
+      actualStatus = user.subscription_status === true && (expiry === null || expiry > now);
     }
 
-    const userStatus = data.subscription_status === true &&
-      (data.subscription_expiry === null || new Date(data.subscription_expiry) > new Date())
-      ? 'active' : 'inactive';
+    // ✅ Override DB status
+    user.subscription_status = actualStatus;
 
-    successResponse(res, {
-      ...data,
-      status: userStatus,
+    successResponse(res, { 
+      ...user, 
+      total_posts: totalPosts, 
+      inactive_downline_count: inactiveDownlineCount 
     });
   } catch (err) {
-    logger.error('Error in getUserById:', { error: err, userId: req.user?.id });
+    logger.error('Error in getMyProfile:', err);
     errorResponse(res, 'Server error');
   }
 };

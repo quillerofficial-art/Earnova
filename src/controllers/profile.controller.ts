@@ -20,6 +20,21 @@ export const getMyProfile = async (req: Request, res: Response) => {
     const { data: inactiveCount } = await supabaseAdmin
       .rpc('count_inactive_downline', { user_id: userId });
     const inactiveDownlineCount = inactiveCount || 0;
+
+    // ✅ REAL-TIME SUBSCRIPTION STATUS (Middleware jaisa)
+    let actualStatus = false;
+    if (user.level >= 1) {
+      // Level 1+ = Lifetime Free → Always Active
+      actualStatus = true;
+      user.subscription_expiry = null; // Frontend को null bhejo
+    } else {
+      const now = new Date();
+      const expiry = user.subscription_expiry ? new Date(user.subscription_expiry) : null;
+      actualStatus = user.subscription_status === true && (expiry === null || expiry > now);
+    }
+    // ✅ Override DB status with real-time status
+    user.subscription_status = actualStatus;
+
     successResponse(res, { ...user, total_posts: totalPosts, inactive_downline_count: inactiveDownlineCount });
   } catch (err) {
     logger.error('Error in getMyProfile:', err);
