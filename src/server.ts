@@ -229,9 +229,9 @@ cron.schedule('0 1 * * *', async () => {
   }
 });
 
-// 🔄 हर रविवार रात 3:00 बजे (UTC) – Google Play Subscriptions Re-validate करो
-cron.schedule('0 3 * * 0', async () => {
-  console.log('🔄 [WEEKLY] Starting Google Play subscription revalidation...');
+// 🔄 हर रात 3:00 बजे (UTC) – Google Play Subscriptions Re-validate करो
+cron.schedule('0 3 * * *', async () => {
+  console.log('🔄 [DAILY] Starting Google Play subscription revalidation...');
   try {
     // 1. सिर्फ Level 0 के Active Google Play Users fetch करो (जिनकी expiry future में है)
     const { data: users, error } = await supabaseAdmin
@@ -298,10 +298,10 @@ cron.schedule('0 3 * * 0', async () => {
       }
     }
 
-    console.log(`✅ [WEEKLY] Revalidation complete. Renewed: ${renewedCount}, Deactivated: ${deactivatedCount}`);
+    console.log(`✅ [DAILY] Revalidation complete. Renewed: ${renewedCount}, Deactivated: ${deactivatedCount}`);
 
   } catch (err) {
-    console.error('❌ Weekly revalidation cron error:', err);
+    console.error('❌ Daily revalidation cron error:', err);
   }
 });
 
