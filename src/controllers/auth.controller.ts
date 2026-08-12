@@ -176,10 +176,10 @@ export const signup = async (req: Request, res: Response) => {
       `The formula is simple: Post daily, level up, and get paid every month.\n\n` +
       `💰 Level & Payout Breakdown:\n` +
       `• Level 1: Lifetime free subscription\n` +
-      `• Level 2: ₹125/month\n` +
-      `• Level 3: ₹600/month\n` +
-      `• Level 4: ₹3,100/month\n` +
-      `• Level 5: ₹15,000/month\n\n` +
+      `• Level 2: ₹25/month\n` +
+      `• Level 3: ₹125/month\n` +
+      `• Level 4: ₹625/month\n` +
+      `• Level 5: ₹3125/month\n\n` +
       `🚀 How to Level Up & Unlock Free Subscriptions?\n` +
       `There are 5 tasks in total. Complete each task to increase your level by 1!\n\n` +
       `🔹 Your First Mission (Task 1): Unlock Level 1 & Lifetime Free Access\n` +
@@ -196,7 +196,7 @@ export const signup = async (req: Request, res: Response) => {
       .insert({
         admin_id: null,
         title: 'Welcome to the family! 🎉',
-        message: `Poster isn't just another social media app—it’s a social communication platform that actually pays you for your daily creativity!\n\nThe formula is simple: Post daily, level up, and get paid every month.\n\n💰 The Level & Payout Breakdown\nLevel 1: Lifetime Free Subscription\nLevel 2: ₹125/month\nLevel 3: ₹625/month\nLevel 4: ₹3,125/month\nLevel 5: ₹15,000/month\n\n🚀 How to Level Up & Unlock Free Subscriptions?\nThere are 5 tasks in total. Every time you complete a task, your level increases by 1!\n\nYour First Mission (Task 1): Unlock Level 1 & Lifetime Free Access\nThe Goal: Refer 5 friends.\nThe Catch: Make sure they post their very first post on the app.\nThe Deadline: Complete this within your first 7 days of subscribing.\nThe Reward: Reaching Level 1 unlocks a Free Lifetime Subscription to the app!\n\nReady to turn your posts into payouts? Start sharing and posting today!`
+        message: `Poster isn't just another social media app—it’s a social communication platform that actually pays you for your daily creativity!\n\nThe formula is simple: Post daily, level up, and get paid every month.\n\n💰 The Level & Payout Breakdown\nLevel 1: Lifetime Free Subscription\nLevel 2: ₹25/month\nLevel 3: ₹125/month\nLevel 4: ₹625/month\nLevel 5: ₹3,125/month\n\n🚀 How to Level Up & Unlock Free Subscriptions?\nThere are 5 tasks in total. Every time you complete a task, your level increases by 1!\n\nYour First Mission (Task 1): Unlock Level 1 & Lifetime Free Access\nThe Goal: Refer 5 friends.\nThe Catch: Make sure they post their very first post on the app.\nThe Deadline: Complete this within your first 7 days of subscribing.\nThe Reward: Reaching Level 1 unlocks a Free Lifetime Subscription to the app!\n\nReady to turn your posts into payouts? Start sharing and posting today!`
       })
       .select()
       .single();
